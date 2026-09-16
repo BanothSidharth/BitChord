@@ -423,8 +423,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * on a round trip before the heart fills reads as the tap not having
      * registered, and people tap again.
      */
-    fun setLike(videoId: String, status: LikeStatus) {
+    fun setLike(song: Song, status: LikeStatus) {
         if (!requireSignIn()) return
+        val videoId = song.videoId
         val previous = likeStatusOf(videoId)
         if (previous == status) return
         LikeState.set(videoId, status)
@@ -439,6 +440,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val unliked = previous == LikeStatus.LIKE &&
                         status == LikeStatus.INDIFFERENT
                     if (unliked) forgetFromLibrary(videoId)
+                    // Freshly liked, not merely re-confirmed — a song already
+                    // sitting at LIKE that gets rated LIKE again returns above
+                    // at the no-op check, so this only fires on the actual
+                    // like tap. [Downloads.enqueue] is the one door into the
+                    // queue and already applies Wi-Fi-only and dedupe rules,
+                    // so nothing further is checked here.
+                    if (status == LikeStatus.LIKE && AppSettings.autoDownloadLikedSongs.value) {
+                        Downloads.enqueue(getApplication(), song, from = "Liked Music")
+                    }
                 },
                 onFailure = {
                     LikeState.set(videoId, previous)
@@ -504,15 +514,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** The heart: liked becomes neutral, anything else becomes liked. */
-    fun toggleLike(videoId: String) = setLike(
-        videoId,
-        if (likeStatusOf(videoId) == LikeStatus.LIKE) LikeStatus.INDIFFERENT else LikeStatus.LIKE,
+    fun toggleLike(song: Song) = setLike(
+        song,
+        if (likeStatusOf(song.videoId) == LikeStatus.LIKE) LikeStatus.INDIFFERENT else LikeStatus.LIKE,
     )
 
     /** As [toggleLike], for the thumb-down. */
-    fun toggleDislike(videoId: String) = setLike(
-        videoId,
-        if (likeStatusOf(videoId) == LikeStatus.DISLIKE) {
+    fun toggleDislike(song: Song) = setLike(
+        song,
+        if (likeStatusOf(song.videoId) == LikeStatus.DISLIKE) {
             LikeStatus.INDIFFERENT
         } else {
             LikeStatus.DISLIKE
