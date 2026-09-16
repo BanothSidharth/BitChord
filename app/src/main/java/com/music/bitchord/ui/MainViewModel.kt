@@ -2055,6 +2055,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 else -> {
                     YtMusicRepository.browseSongs(browseId).fold(
                         onSuccess = { page ->
+                            if (resolved == BrowseType.PLAYLIST &&
+                                browseId in AppSettings.autoDownloadPlaylists.value
+                            ) {
+                                viewModelScope.launch {
+                                    YtMusicRepository.allSongs(browseId).onSuccess { songs ->
+                                        songs.forEach { Downloads.enqueue(getApplication(), it, from = title) }
+                                    }
+                                }
+                            }
                             // Free here — the page that returned these rows is
                             // the one thing that states who made the playlist,
                             // so its own menu never has to go and ask. Recorded
@@ -2090,6 +2099,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             }
+
             // Update by id — the user may have pushed another page meanwhile.
             _detailStack.value = _detailStack.value.map {
                 if (it.browseId == browseId && it.songs is UiState.Loading) {
@@ -2113,6 +2123,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Only once the first page is on screen: [fillIn] appends to it,
             // and has nothing to append to before this.
             more?.let { fillIn(browseId, it, thumbnailUrl ?: artwork) }
+        }
+    }
+
+    fun toggleAutoDownloadPlaylist(browseId: String) {
+        if (browseId !in AppSettings.autoDownloadPlaylists.value) {
+            AppSettings.setAutoDownloadPlaylist(browseId, true)
+            viewModelScope.launch {
+                YtMusicRepository.allSongs(browseId).onSuccess { songs ->
+                    songs.forEach { Downloads.enqueue(getApplication(), it, from = "Playlist") }
+                }
+            }
+        } else {
+            AppSettings.setAutoDownloadPlaylist(browseId, false)
         }
     }
 
