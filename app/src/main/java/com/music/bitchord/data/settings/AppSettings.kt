@@ -258,6 +258,9 @@ object AppSettings {
      */
     val exportDownloads = MutableStateFlow(false)
 
+    /** Playlist ids whose complete contents should be kept downloaded. */
+    val autoDownloadPlaylists = MutableStateFlow<Set<String>>(emptySet())
+
     /** Whether the active network charges for data. `null` while offline. */
     val meteredConnection = MutableStateFlow<Boolean?>(null)
 
@@ -725,6 +728,7 @@ object AppSettings {
         downloadQuality.value = readDownloadQuality()
         wifiOnlyDownloads.value = prefs.getBoolean(KEY_WIFI_ONLY_DOWNLOADS, true)
         exportDownloads.value = prefs.getBoolean(KEY_EXPORT_DOWNLOADS, false)
+        autoDownloadPlaylists.value = prefs.getStringSet(KEY_AUTO_DOWNLOAD_PLAYLISTS, emptySet()).orEmpty()
         crossfadeSeconds.value = prefs.getInt(KEY_CROSSFADE, 0)
         smartFadeEnabled.value = prefs.getBoolean(KEY_SMART_FADE, false)
         automixPerformanceMode.value = runCatching {
@@ -1365,6 +1369,14 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_EXPORT_DOWNLOADS, value).apply()
     }
 
+    fun setAutoDownloadPlaylist(playlistId: String, enabled: Boolean) {
+        val next = autoDownloadPlaylists.value.toMutableSet().apply {
+            if (enabled) add(playlistId) else remove(playlistId)
+        }.toSet()
+        autoDownloadPlaylists.value = next
+        prefs.edit().putStringSet(KEY_AUTO_DOWNLOAD_PLAYLISTS, next).apply()
+    }
+
     fun setLastfmPrimaryArtistOnly(value: Boolean) {
         lastfmPrimaryArtistOnly.value = value
         prefs.edit().putBoolean(KEY_LASTFM_PRIMARY_ARTIST_ONLY, value).apply()
@@ -1685,6 +1697,7 @@ object AppSettings {
     private const val KEY_QUALITY_DOWNLOAD = "audio_quality_download"
     private const val KEY_WIFI_ONLY_DOWNLOADS = "wifi_only_downloads"
     private const val KEY_EXPORT_DOWNLOADS = "export_downloads"
+    private const val KEY_AUTO_DOWNLOAD_PLAYLISTS = "auto_download_playlists"
     private const val KEY_LOSSLESS = "lossless_audio"
     private const val KEY_CROSSFADE = "crossfade_seconds"
     private const val KEY_SMART_FADE = "smart_fade_enabled"

@@ -536,6 +536,7 @@ private fun BitChordApp(
     // page's own overflow — because only one of them can be held at a time.
     var browseActions by remember { mutableStateOf<BrowseTarget?>(null) }
     val autoplay by AppSettings.autoplay.collectAsStateWithLifecycle()
+    val autoDownloadPlaylists by AppSettings.autoDownloadPlaylists.collectAsStateWithLifecycle()
     val partyState by ListenTogether.state.collectAsStateWithLifecycle()
     val listenBrainzToken by AppSettings.listenBrainzToken.collectAsStateWithLifecycle()
     // Incremented each time the search tab is re-tapped while already selected,
@@ -2375,6 +2376,10 @@ private fun BitChordApp(
                                     downloadId = downloadIdFor(page.browseId),
                                 )
                             },
+                            autoDownloadPlaylist = page.browseId in autoDownloadPlaylists,
+                            onToggleAutoDownloadPlaylist = if (page.type == BrowseType.PLAYLIST) {
+                                { viewModel.toggleAutoDownloadPlaylist(page.browseId) }
+                            } else null,
                             onArtistClick = { id, name ->
                                 viewModel.openDetail(id, name, "Artist", null, BrowseType.ARTIST)
                             },
