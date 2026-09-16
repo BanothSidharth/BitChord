@@ -1785,10 +1785,12 @@ private fun BitChordApp(
             autoplayEnabled = autoplay,
             signedIn = signedIn,
             likeStatus = likeStatuses[song.videoId] ?: LikeStatus.INDIFFERENT,
-            onToggleLike = { viewModel.toggleLike(song.videoId) },
+            onToggleLike = { viewModel.toggleLike(song) },
             // The service owns both the queue and the Shuffle state. Keeping
             // the toggle on that side prevents the UI from changing the icon
             // before its asynchronous reorder command has actually landed.
+            // QueueShuffle.toggle() now persists the setting itself, so no
+            // extra AppSettings call is needed here.
             onToggleShuffle = { controller?.toggleShuffle() },
             onCycleRepeat = {
                 controller?.let {
@@ -3001,8 +3003,8 @@ private fun BitChordApp(
                     onDownload = { downloadSong(song) },
                     // The sheet stays up for a rating: it shows the new state
                     // in place, and people often thumb a song and then queue it.
-                    onToggleLike = { viewModel.toggleLike(song.videoId) },
-                    onToggleDislike = { viewModel.toggleDislike(song.videoId) },
+                    onToggleLike = { viewModel.toggleLike(song) },
+                    onToggleDislike = { viewModel.toggleDislike(song) },
                     onAddToPlaylist = {
                         songActions = null
                         viewModel.loadPlaylists()
