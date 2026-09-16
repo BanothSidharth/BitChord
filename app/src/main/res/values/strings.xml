@@ -60,6 +60,8 @@
     <string name="subscribe">Subscribe</string>
     <string name="unsubscribe">Unsubscribe</string>
     <string name="download_all">Download all</string>
+    <string name="enable_auto_download_playlist">Auto-download this playlist</string>
+    <string name="disable_auto_download_playlist">Stop auto-downloading this playlist</string>
     <string name="top_songs">Top songs</string>
     <string name="suggested">Suggested</string>
     <string name="song_count">%1$d song</string>
