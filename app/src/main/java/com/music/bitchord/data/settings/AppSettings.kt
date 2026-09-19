@@ -1489,6 +1489,8 @@ object AppSettings {
         }.toSet()
         autoDownloadPlaylists.value = next
         prefs.edit().putStringSet(KEY_AUTO_DOWNLOAD_PLAYLISTS, next).apply()
+    }
+
     fun setAutoDownloadLikedSongs(value: Boolean) {
         autoDownloadLikedSongs.value = value
         prefs.edit().putBoolean(KEY_AUTO_DOWNLOAD_LIKED_SONGS, value).apply()
