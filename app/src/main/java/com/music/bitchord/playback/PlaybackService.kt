@@ -548,6 +548,7 @@ class PlaybackService : MediaLibraryService() {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var applyingBackupPlayback = false
+    private var ignoreBackupUntilMs = 0L
 
     /**
      * Binds playback to a Listen Together party, when there is one.
@@ -665,7 +666,7 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) prefetchAround(exoPlayer) else cancelPrefetch()
             if (isPlaying) lookForBetterCopy(exoPlayer)
             savePlaybackState(exoPlayer)
-            if (!applyingBackupPlayback) {
+            if (!applyingBackupPlayback && android.os.SystemClock.elapsedRealtime() >= ignoreBackupUntilMs) {
                 val currentSong = exoPlayer.currentMediaItem?.toSong()
                 BackupService.publishPlayback(
                     PlaybackState(
@@ -1437,12 +1438,24 @@ class PlaybackService : MediaLibraryService() {
     private fun applyBackupPlayback(event: PlaybackEvent) {
         val exoPlayer = player ?: return
         val state = event.state
-        if (state.mediaId.isNullOrBlank() || state.mediaId != exoPlayer.currentMediaItem?.mediaId) {
+        if (state.mediaId.isNullOrBlank()) {
             return
         }
 
+        ignoreBackupUntilMs = android.os.SystemClock.elapsedRealtime() + 3_000L
         applyingBackupPlayback = true
         try {
+            if (state.mediaId != exoPlayer.currentMediaItem?.mediaId) {
+                val item = Song(
+                    videoId = state.mediaId,
+                    title = state.title.orEmpty(),
+                    artist = state.artist.orEmpty(),
+                    thumbnailUrl = null,
+                    durationText = state.durationText,
+                ).toMediaItem()
+                exoPlayer.setMediaItem(item, state.positionMs.coerceAtLeast(0L))
+                exoPlayer.prepare()
+            }
             val drift = state.positionMs - exoPlayer.currentPosition
             if (kotlin.math.abs(drift) > 1_000L) {
                 exoPlayer.seekTo(state.positionMs.coerceAtLeast(0L))

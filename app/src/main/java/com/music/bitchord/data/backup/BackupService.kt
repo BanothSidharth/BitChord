@@ -155,7 +155,11 @@ object BackupService {
                 applyChange(change)
             }
             devices.tryEmit(request("/devices", HttpMethod.Get))
-            activePlayback.emit(request("/playback", HttpMethod.Get))
+            val snapshot = request<PlaybackSnapshot>("/playback", HttpMethod.Get)
+            activePlayback.emit(snapshot)
+            snapshot.deviceId
+                ?.takeIf { it != BackupSettings.deviceId.value }
+                ?.let { playbackUpdates.emit(PlaybackEvent(it, snapshot.state)) }
         }.onFailure { Log.d(TAG, "Backup sync unavailable", it) }
     }
 
