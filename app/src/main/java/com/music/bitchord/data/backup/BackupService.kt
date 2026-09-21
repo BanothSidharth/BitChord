@@ -75,25 +75,23 @@ object BackupService {
     fun publishPlayback(state: PlaybackState) {
         if (!BackupSettings.configured) return
         scope.launch {
-            request<JsonObject>("/playback", HttpMethod.Put) {
-                setBody(mapOf("device_id" to BackupSettings.deviceId.value, "state" to state))
-            }
+            runCatching {
+                request<JsonObject>("/playback", HttpMethod.Put) {
+                    setBody(PlaybackUpdateRequest(BackupSettings.deviceId.value, state))
+                }
+            }.onFailure { Log.d(TAG, "Playback backup unavailable", it) }
         }
     }
 
     fun sendCommand(deviceId: String, command: PlaybackCommand) {
         if (!BackupSettings.configured) return
         scope.launch {
-            request<JsonObject>("/playback/commands", HttpMethod.Post) {
-                setBody(
-                    mapOf(
-                        "device_id" to deviceId,
-                        "action" to command.command,
-                        "payload" to command,
-                        "command_id" to (command.commandId ?: UUID.randomUUID().toString()),
-                    ),
-                )
-            }
+            runCatching {
+                val commandId = command.commandId ?: UUID.randomUUID().toString()
+                request<JsonObject>("/playback/commands", HttpMethod.Post) {
+                    setBody(PlaybackCommandRequest(deviceId, command.command, command, commandId))
+                }
+            }.onFailure { Log.d(TAG, "Playback command unavailable", it) }
         }
     }
 

@@ -34,6 +34,20 @@ data class HealthResponse(
 )
 
 @Serializable
+data class PlaybackUpdateRequest(
+    @SerialName("device_id") val deviceId: String,
+    val state: PlaybackState,
+)
+
+@Serializable
+data class PlaybackCommandRequest(
+    @SerialName("device_id") val deviceId: String,
+    val action: String,
+    val payload: PlaybackCommand,
+    @SerialName("command_id") val commandId: String,
+)
+
+@Serializable
 data class SyncPushRequest(val changes: List<BackupChange>)
 
 @Serializable
