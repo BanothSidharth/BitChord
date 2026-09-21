@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FileDownload
@@ -235,6 +236,7 @@ fun SettingsScreen(
     val backupDeviceName by BackupSettings.deviceName.collectAsStateWithLifecycle()
     val backupEnabled by BackupSettings.enabled.collectAsStateWithLifecycle()
     val backupAutoSync by BackupSettings.autoSync.collectAsStateWithLifecycle()
+    val backupDevices by BackupService.devices.collectAsStateWithLifecycle(initialValue = emptyList())
 
     LaunchedEffect(selectedPerformanceRefreshRate, performanceRefreshRate) {
         if (selectedPerformanceRefreshRate != performanceRefreshRate) {
@@ -730,6 +732,16 @@ fun SettingsScreen(
                             MaterialTheme.colorScheme.error
                         },
                         modifier = Modifier.padding(horizontal = ROW_INSET, vertical = 4.dp),
+                    )
+                }
+            }
+            backupDevices.forEach { device ->
+                row("Connected device ${device.name}", "backup", "device") {
+                    SettingsRow(
+                        icon = Icons.Rounded.Devices,
+                        title = device.name,
+                        subtitle = "${device.platform} · ${if (device.online) "online" else "recently seen"}",
+                        enabled = device.id != BackupSettings.deviceId.value,
                     )
                 }
             }
