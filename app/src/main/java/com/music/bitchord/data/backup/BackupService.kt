@@ -41,6 +41,7 @@ import java.util.UUID
 object BackupService {
     val devices = MutableSharedFlow<List<Device>>(replay = 1, extraBufferCapacity = 1)
     val playbackUpdates = MutableSharedFlow<PlaybackEvent>(replay = 1, extraBufferCapacity = 8)
+    val remoteCommands = MutableSharedFlow<RemoteCommandEvent>(replay = 0, extraBufferCapacity = 8)
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -155,6 +156,13 @@ object BackupService {
                     incoming.consumeEach { frame ->
                         if (frame is Frame.Text) {
                             val objectValue = json.parseToJsonElement(frame.readText()).jsonObject
+                            if (objectValue["type"]?.toString()?.trim('"') == "command" &&
+                                objectValue["device_id"]?.toString()?.trim('"') == BackupSettings.deviceId.value
+                            ) {
+                                remoteCommands.tryEmit(
+                                    json.decodeFromJsonElement(RemoteCommandEvent.serializer(), objectValue)
+                                )
+                            }
                             objectValue["state"]?.let {
                                 val source = objectValue["device_id"]?.toString()?.trim('"')
                                     ?: return@let

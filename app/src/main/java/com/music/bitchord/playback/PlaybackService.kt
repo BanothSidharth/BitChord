@@ -83,6 +83,7 @@ import com.music.bitchord.data.stats.ListeningRecorder
 import com.music.bitchord.data.backup.BackupService
 import com.music.bitchord.data.backup.PlaybackState
 import com.music.bitchord.data.backup.PlaybackEvent
+import com.music.bitchord.data.backup.RemoteCommandEvent
 import com.music.bitchord.data.innertube.PlayerClient
 import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.LikeStatus
@@ -1394,6 +1395,11 @@ class PlaybackService : MediaLibraryService() {
                 applyBackupPlayback(event)
             }
         }
+        scope.launch {
+            BackupService.remoteCommands.collect { command ->
+                applyRemoteCommand(command)
+            }
+        }
         loadAutoplayForCurrentTrack()
 
         // Only the analytics listener reports the format the audio renderer was
@@ -1430,6 +1436,7 @@ class PlaybackService : MediaLibraryService() {
         if (state.mediaId.isNullOrBlank() || state.mediaId != exoPlayer.currentMediaItem?.mediaId) {
             return
         }
+
         applyingBackupPlayback = true
         try {
             val drift = state.positionMs - exoPlayer.currentPosition
@@ -1440,6 +1447,21 @@ class PlaybackService : MediaLibraryService() {
                 exoPlayer.play()
             } else if (!state.playing && exoPlayer.isPlaying) {
                 exoPlayer.pause()
+            }
+        } finally {
+            applyingBackupPlayback = false
+        }
+    }
+
+    private fun applyRemoteCommand(event: RemoteCommandEvent) {
+        val exoPlayer = player ?: return
+        applyingBackupPlayback = true
+        try {
+            when (event.action.lowercase()) {
+                "play", "resume" -> exoPlayer.play()
+                "pause" -> exoPlayer.pause()
+                "seek" -> event.payload.positionMs?.let { exoPlayer.seekTo(it.coerceAtLeast(0L)) }
+                "stop" -> exoPlayer.stop()
             }
         } finally {
             applyingBackupPlayback = false

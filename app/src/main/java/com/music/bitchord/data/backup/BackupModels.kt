@@ -74,6 +74,14 @@ data class PlaybackEvent(
 )
 
 @Serializable
+data class RemoteCommandEvent(
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("command_id") val commandId: String,
+    val action: String,
+    val payload: PlaybackCommand = PlaybackCommand(""),
+)
+
+@Serializable
 data class PlaybackCommand(
     val command: String,
     @SerialName("position_ms") val positionMs: Long? = null,

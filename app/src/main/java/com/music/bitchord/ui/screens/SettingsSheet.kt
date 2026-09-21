@@ -135,6 +135,7 @@ import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.backup.BackupSettings
 import com.music.bitchord.data.backup.BackupService
+import com.music.bitchord.data.backup.PlaybackCommand
 import com.music.bitchord.data.settings.OutputPcmMode
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.data.settings.AutomixPerformanceMode
@@ -742,6 +743,12 @@ fun SettingsScreen(
                         title = device.name,
                         subtitle = "${device.platform} · ${if (device.online) "online" else "recently seen"}",
                         enabled = device.id != BackupSettings.deviceId.value,
+                        onClick = {
+                            if (device.id != BackupSettings.deviceId.value) {
+                                BackupService.sendCommand(device.id, PlaybackCommand("play"))
+                                backupConnectionStatus = "Control sent to ${device.name}"
+                            }
+                        },
                     )
                 }
             }
