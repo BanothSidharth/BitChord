@@ -666,9 +666,13 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) lookForBetterCopy(exoPlayer)
             savePlaybackState(exoPlayer)
             if (!applyingBackupPlayback) {
+                val currentSong = exoPlayer.currentMediaItem?.toSong()
                 BackupService.publishPlayback(
                     PlaybackState(
                         mediaId = exoPlayer.currentMediaItem?.mediaId,
+                        title = currentSong?.title,
+                        artist = currentSong?.artist,
+                        durationText = currentSong?.durationText,
                         positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
                         playing = isPlaying,
                     ),
@@ -1458,6 +1462,20 @@ class PlaybackService : MediaLibraryService() {
         applyingBackupPlayback = true
         try {
             when (event.action.lowercase()) {
+                "transfer" -> {
+                    val command = event.payload
+                    val mediaId = command.mediaId ?: return
+                    val item = Song(
+                        videoId = mediaId,
+                        title = command.title.orEmpty(),
+                        artist = command.artist.orEmpty(),
+                        thumbnailUrl = null,
+                        durationText = command.durationText,
+                    ).toMediaItem()
+                    exoPlayer.setMediaItem(item, command.positionMs ?: 0L)
+                    exoPlayer.prepare()
+                    exoPlayer.play()
+                }
                 "play", "resume" -> exoPlayer.play()
                 "pause" -> exoPlayer.pause()
                 "seek" -> event.payload.positionMs?.let { exoPlayer.seekTo(it.coerceAtLeast(0L)) }

@@ -62,6 +62,9 @@ data class SyncPullResponse(
 @Serializable
 data class PlaybackState(
     @SerialName("media_id") val mediaId: String? = null,
+    val title: String? = null,
+    val artist: String? = null,
+    @SerialName("duration_text") val durationText: String? = null,
     @SerialName("position_ms") val positionMs: Long = 0,
     val playing: Boolean = false,
     @SerialName("updated_at") val updatedAt: Long = System.currentTimeMillis(),
@@ -93,5 +96,8 @@ data class PlaybackCommand(
     val command: String,
     @SerialName("position_ms") val positionMs: Long? = null,
     @SerialName("media_id") val mediaId: String? = null,
+    val title: String? = null,
+    val artist: String? = null,
+    @SerialName("duration_text") val durationText: String? = null,
     @SerialName("command_id") val commandId: String? = null,
 )

@@ -50,6 +50,7 @@ object BackupService {
     private lateinit var queueFile: File
     private var cursor: String? = null
     private lateinit var client: HttpClient
+    @Volatile private var latestPlayback: PlaybackState? = null
 
     fun init(context: Context) {
         queueFile = File(context.filesDir, "backup_queue.json")
@@ -76,13 +77,30 @@ object BackupService {
 
     fun publishPlayback(state: PlaybackState) {
         if (!BackupSettings.configured) return
+        latestPlayback = state
         scope.launch {
             runCatching {
                 request<JsonObject>("/playback", HttpMethod.Put) {
                     setBody(PlaybackUpdateRequest(BackupSettings.deviceId.value, state))
                 }
+
             }.onFailure { Log.d(TAG, "Playback backup unavailable", it) }
         }
+    }
+
+    fun transferToDevice(deviceId: String) {
+        val state = latestPlayback ?: return
+        sendCommand(
+            deviceId,
+            PlaybackCommand(
+                command = "transfer",
+                positionMs = state.positionMs,
+                mediaId = state.mediaId,
+                title = state.title,
+                artist = state.artist,
+                durationText = state.durationText,
+            ),
+        )
     }
 
     fun sendCommand(deviceId: String, command: PlaybackCommand) {

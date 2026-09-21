@@ -746,8 +746,8 @@ fun SettingsScreen(
                         enabled = device.id != BackupSettings.deviceId.value,
                         onClick = {
                             if (device.id != BackupSettings.deviceId.value) {
-                                BackupService.sendCommand(device.id, PlaybackCommand("play"))
-                                backupConnectionStatus = "Control sent to ${device.name}"
+                                BackupService.transferToDevice(device.id)
+                                backupConnectionStatus = "Playback transferred to ${device.name}"
                             }
                         },
                     )
