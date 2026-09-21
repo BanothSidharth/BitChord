@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.builtins.ListSerializer
@@ -74,17 +75,32 @@ object BackupService {
     fun publishPlayback(state: PlaybackState) {
         if (!BackupSettings.configured) return
         scope.launch {
-            request<Unit>("/v1/playback/state", HttpMethod.Put) { setBody(state) }
+            request<JsonObject>("/playback", HttpMethod.Put) {
+                setBody(mapOf("device_id" to BackupSettings.deviceId.value, "state" to state))
+            }
         }
     }
 
     fun sendCommand(deviceId: String, command: PlaybackCommand) {
         if (!BackupSettings.configured) return
         scope.launch {
-            request<Unit>("/v1/devices/$deviceId/commands", HttpMethod.Post) {
-                setBody(command.copy(commandId = command.commandId ?: UUID.randomUUID().toString()))
+            request<JsonObject>("/playback/commands", HttpMethod.Post) {
+                setBody(
+                    mapOf(
+                        "device_id" to deviceId,
+                        "action" to command.command,
+                        "payload" to command,
+                        "command_id" to (command.commandId ?: UUID.randomUUID().toString()),
+                    ),
+                )
             }
         }
+    }
+
+    suspend fun testConnection(): Result<String> = runCatching {
+        check(BackupSettings.serverUrl.value.isNotBlank()) { "Enter a server URL first" }
+        check(BackupSettings.token.value.isNotBlank()) { "Enter an access token first" }
+        request<HealthResponse>("/health", HttpMethod.Get).status
     }
 
     private suspend fun syncLoop() {
@@ -96,26 +112,31 @@ object BackupService {
 
     private suspend fun syncOnce() {
         runCatching {
-            request<Unit>("/health", HttpMethod.Get)
-            request<Unit>("/v1/devices/register", HttpMethod.Post) {
-                setBody(DeviceRegistration(BackupSettings.deviceName.value))
+            request<JsonObject>("/health", HttpMethod.Get)
+            request<JsonObject>("/devices/register", HttpMethod.Post) {
+                setBody(
+                    DeviceRegistration(
+                        deviceId = BackupSettings.deviceId.value,
+                        name = BackupSettings.deviceName.value,
+                    ),
+                )
             }
             val pending = mutex.withLock { readQueue() }
             if (pending.isNotEmpty()) {
-                val response = request<SyncPushResponse>("/v1/sync/push", HttpMethod.Post) {
+                val response = request<SyncPushResponse>("/sync/push", HttpMethod.Post) {
                     setBody(SyncPushRequest(pending))
                 }
                 cursor = response.cursor ?: cursor
                 mutex.withLock { writeQueue(readQueue().drop(pending.size)) }
             }
-            val pulled = request<SyncPullResponse>("/v1/sync/pull", HttpMethod.Get) {
+            val pulled = request<SyncPullResponse>("/sync/pull", HttpMethod.Get) {
                 parameter("cursor", cursor)
             }
             cursor = pulled.cursor ?: cursor
             for (change in pulled.changes) {
                 applyChange(change)
             }
-            devices.tryEmit(request("/v1/devices", HttpMethod.Get))
+            devices.tryEmit(request("/devices", HttpMethod.Get))
         }.onFailure { Log.d(TAG, "Backup sync unavailable", it) }
     }
 
@@ -130,8 +151,8 @@ object BackupService {
                     .replaceFirst("https://", "wss://")
                     .replaceFirst("http://", "ws://")
                 client.webSocket(request = {
-                    url("$base/v1/ws")
-                    header(HttpHeaders.Authorization, "Bearer " + BackupSettings.token.value)
+                    url("$base/ws")
+                    parameter("token", BackupSettings.token.value)
                 }) {
                     incoming.consumeEach { frame ->
                         if (frame is Frame.Text) {

@@ -819,31 +819,35 @@ class PlaybackService : MediaLibraryService() {
             // session is currently pointed at.
             val exoPlayer = player ?: return
             if (state == Player.STATE_ENDED) {
-                SleepTimer.cancel()
-                // The queue ran dry, so no transition will ever close the last
-                // track out. Without this its history entry keeps whatever
-                // watchtime the 30-second sampler happened to have reported and
-                // is never marked finished — so the one play most likely to be
-                // a full, deliberate listen is the one recorded as abandoned.
-                PlaybackTracker.onPlaybackFinished(lastPositionSeconds)
-                lastPositionSeconds = 0
-                // The last track finished with nothing after it, so no
-                // transition will ever close it out. Scrobble it now.
-                val lastSong = listenBrainzSong
-                if (lastSong != null && listenBrainzStartMs > 0L) {
-                    val lastStart = listenBrainzStartMs
-                    val lastDuration = listenBrainzDurationMs
-                        ?: exoPlayer.duration.takeIf { it > 0 }
-                    submitListenBrainzFinished(lastSong, lastStart, lastDuration)
+                runCatching {
+                    SleepTimer.cancel()
+                    // The queue ran dry, so no transition will ever close the last
+                    // track out. Without this its history entry keeps whatever
+                    // watchtime the 30-second sampler happened to have reported and
+                    // is never marked finished — so the one play most likely to be
+                    // a full, deliberate listen is the one recorded as abandoned.
+                    PlaybackTracker.onPlaybackFinished(lastPositionSeconds)
+                    lastPositionSeconds = 0
+                    // The last track finished with nothing after it, so no
+                    // transition will ever close it out. Scrobble it now.
+                    val lastSong = listenBrainzSong
+                    if (lastSong != null && listenBrainzStartMs > 0L) {
+                        val lastStart = listenBrainzStartMs
+                        val lastDuration = listenBrainzDurationMs
+                            ?: exoPlayer.duration.takeIf { it > 0 }
+                        submitListenBrainzFinished(lastSong, lastStart, lastDuration)
+                    }
+                    listenBrainzSong = null
+                    listenBrainzStartMs = 0L
+                    listenBrainzDurationMs = null
+                    // A missed/empty AutoPlay response can let the last queued
+                    // track finish before anything is appended. There will be no
+                    // item transition to run the ordinary refill path, so give the
+                    // still-enabled empty queue another chance here.
+                    refreshAutoplayIfQueueEmpty()
+                }.onFailure {
+                    TrackLog.w("BitChord", "end-of-track bookkeeping failed: ${it.message}")
                 }
-                listenBrainzSong = null
-                listenBrainzStartMs = 0L
-                listenBrainzDurationMs = null
-                // A missed/empty AutoPlay response can let the last queued
-                // track finish before anything is appended. There will be no
-                // item transition to run the ordinary refill path, so give the
-                // still-enabled empty queue another chance here.
-                refreshAutoplayIfQueueEmpty()
             }
         }
 

@@ -72,6 +72,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
 import com.music.bitchord.data.lyrics.translationLanguageName
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -132,6 +133,7 @@ import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.backup.BackupSettings
+import com.music.bitchord.data.backup.BackupService
 import com.music.bitchord.data.settings.OutputPcmMode
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.data.settings.AutomixPerformanceMode
@@ -273,6 +275,7 @@ fun SettingsScreen(
     var confirmImport by remember { mutableStateOf(false) }
     var showPerformanceWarning by remember { mutableStateOf(false) }
     var showPerformanceConfirmation by remember { mutableStateOf(false) }
+    var backupConnectionStatus by remember { mutableStateOf<String?>(null) }
     val backupScope = rememberCoroutineScope()
 
     val batterySettingsLauncher = rememberLauncherForActivityResult(
@@ -700,6 +703,35 @@ fun SettingsScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = ROW_INSET),
                 )
+            }
+            row("Test connection", "backup", "server", "connect") {
+                Button(
+                    onClick = {
+                        backupConnectionStatus = "Testing..."
+                        backupScope.launch {
+                            backupConnectionStatus = BackupService.testConnection().fold(
+                                onSuccess = { "Connected ($it)" },
+                                onFailure = { "Connection failed: ${it.message ?: "unknown error"}" },
+                            )
+                        }
+                    },
+                    enabled = backupUrl.isNotBlank() && backupToken.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = ROW_INSET),
+                ) {
+                    Text("Test connection")
+                }
+                backupConnectionStatus?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (it.startsWith("Connected")) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                        modifier = Modifier.padding(horizontal = ROW_INSET, vertical = 4.dp),
+                    )
+                }
             }
             row("Enable backup", "backup", "sync", "server") {
                 SettingsRow(

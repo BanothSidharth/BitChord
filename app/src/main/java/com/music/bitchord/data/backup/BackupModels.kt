@@ -14,15 +14,23 @@ data class BackupChange(
 
 @Serializable
 data class DeviceRegistration(
-    @SerialName("device_name") val deviceName: String,
+    @SerialName("device_id") val deviceId: String,
+    val name: String,
     val platform: String = "android",
 )
 
 @Serializable
 data class Device(
-    @SerialName("device_id") val deviceId: String,
-    @SerialName("device_name") val deviceName: String,
+    val id: String,
+    val name: String,
+    val platform: String = "android",
     val online: Boolean = false,
+)
+
+@Serializable
+data class HealthResponse(
+    val status: String,
+    val service: String = "",
 )
 
 @Serializable
