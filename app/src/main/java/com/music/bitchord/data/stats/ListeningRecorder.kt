@@ -3,6 +3,9 @@ package com.music.bitchord.data.stats
 import com.music.bitchord.data.YtMusicRepository
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.durationMillis
+import com.music.bitchord.data.backup.BackupService
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -87,6 +90,14 @@ object ListeningRecorder {
         if (++samplesSinceFlush >= FLUSH_EVERY) {
             samplesSinceFlush = 0
             ListeningStats.flush()
+            BackupService.enqueue(
+                "listening_stats",
+                buildJsonObject {
+                    put("media_id", song.videoId)
+                    put("played_ms", playedThisTrack)
+                    put("counts_as_play", playCounted)
+                },
+            )
         }
     }
 

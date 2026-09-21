@@ -80,6 +80,8 @@ import com.music.bitchord.data.TrackLog
 import com.music.bitchord.data.discord.DiscordRPC
 import com.music.bitchord.data.innertube.PlaybackTracker
 import com.music.bitchord.data.stats.ListeningRecorder
+import com.music.bitchord.data.backup.BackupService
+import com.music.bitchord.data.backup.PlaybackState
 import com.music.bitchord.data.innertube.PlayerClient
 import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.LikeStatus
@@ -659,6 +661,13 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) prefetchAround(exoPlayer) else cancelPrefetch()
             if (isPlaying) lookForBetterCopy(exoPlayer)
             savePlaybackState(exoPlayer)
+            BackupService.publishPlayback(
+                PlaybackState(
+                    mediaId = exoPlayer.currentMediaItem?.mediaId,
+                    positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
+                    playing = isPlaying,
+                ),
+            )
             // Not strictly needed for the glyph — onPlayWhenReadyChanged has
             // already flipped that — but this is where hasNext/hasPrevious and
             // the artwork are known to be settled.

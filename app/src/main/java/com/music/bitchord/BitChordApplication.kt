@@ -13,6 +13,8 @@ import coil3.request.crossfade
 import com.music.bitchord.auth.AuthStore
 import com.music.bitchord.data.canvas.CanvasCache
 import com.music.bitchord.data.canvas.SpotifyToken
+import com.music.bitchord.data.backup.BackupSettings
+import com.music.bitchord.data.backup.BackupService
 import com.music.bitchord.playback.AudioCache
 import com.music.bitchord.playback.LastPlayed
 import com.music.bitchord.playback.OriginalVersion
@@ -59,6 +61,8 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
             CoroutineScope(Dispatchers.IO).launch { Innertube.ensureSessionScope() }
         }
         AppSettings.init(this)
+        BackupSettings.init(this)
+        BackupService.init(this)
         // Restores a party this device is still a member of, so a process death
         // mid-session is something the rest of the party never sees. The socket
         // and the clock offset are not restored — both are re-established on

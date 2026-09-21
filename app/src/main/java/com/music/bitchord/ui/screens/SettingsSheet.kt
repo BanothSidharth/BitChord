@@ -131,6 +131,7 @@ import com.music.bitchord.data.LocalMediaRepository
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.settings.AppSettings
+import com.music.bitchord.data.backup.BackupSettings
 import com.music.bitchord.data.settings.OutputPcmMode
 import com.music.bitchord.playback.AudioOutputStatus
 import com.music.bitchord.data.settings.AutomixPerformanceMode
@@ -227,6 +228,11 @@ fun SettingsScreen(
     val selectedPerformanceRefreshRate = remember(currentDisplay, performanceRefreshRate) {
         currentDisplay.resolvePerformanceRefreshRate(performanceRefreshRate)
     }
+    val backupUrl by BackupSettings.serverUrl.collectAsStateWithLifecycle()
+    val backupToken by BackupSettings.token.collectAsStateWithLifecycle()
+    val backupDeviceName by BackupSettings.deviceName.collectAsStateWithLifecycle()
+    val backupEnabled by BackupSettings.enabled.collectAsStateWithLifecycle()
+    val backupAutoSync by BackupSettings.autoSync.collectAsStateWithLifecycle()
 
     LaunchedEffect(selectedPerformanceRefreshRate, performanceRefreshRate) {
         if (selectedPerformanceRefreshRate != performanceRefreshRate) {
@@ -663,6 +669,76 @@ fun SettingsScreen(
                     onClick = onEqualizer,
                 )
             }
+        }
+
+        SearchableSettingsGroup(search, header = "Online backup") {
+            val configured = backupUrl.isNotBlank() && backupToken.isNotBlank()
+            row("Server URL", "backup", "server", "url") {
+                OutlinedTextField(
+                    value = backupUrl,
+                    onValueChange = BackupSettings::setServerUrl,
+                    label = { Text("Server URL") },
+                    placeholder = { Text("https://backup.example.com") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = ROW_INSET),
+                )
+            }
+            row("Access token", "backup", "token", "server") {
+                OutlinedTextField(
+                    value = backupToken,
+                    onValueChange = BackupSettings::setToken,
+                    label = { Text("Access token") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = ROW_INSET),
+                )
+            }
+            row("Device name", "backup", "device", "name") {
+                OutlinedTextField(
+                    value = backupDeviceName,
+                    onValueChange = BackupSettings::setDeviceName,
+                    label = { Text("Device name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = ROW_INSET),
+                )
+            }
+            row("Enable backup", "backup", "sync", "server") {
+                SettingsRow(
+                    icon = Icons.Rounded.Cloud,
+                    title = "Enable online backup",
+                    subtitle = if (configured) "Sync listening data and playback across devices" else "Enter a server URL and token first",
+                    enabled = configured || backupEnabled,
+                    trailing = {
+                        Switch(
+                            checked = backupEnabled,
+                            enabled = configured || backupEnabled,
+                            onCheckedChange = BackupSettings::setEnabled,
+                        )
+                    },
+                    onClick = { if (configured || backupEnabled) BackupSettings.setEnabled(!backupEnabled) },
+                )
+            }
+            row("Automatic sync", "backup", "sync", "offline") {
+                SettingsRow(
+                    icon = Icons.Rounded.Cloud,
+                    title = "Automatic sync",
+                    subtitle = "Queue changes offline and retry in the background",
+                    enabled = backupEnabled,
+                    trailing = {
+                        Switch(
+                            checked = backupAutoSync,
+                            enabled = backupEnabled,
+                            onCheckedChange = BackupSettings::setAutoSync,
+                        )
+                    },
+                    onClick = { if (backupEnabled) BackupSettings.setAutoSync(!backupAutoSync) },
+                )
+            }
+            Text(
+                "The token is stored in Android encrypted preferences and is never bundled with the app.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = ROW_INSET, vertical = 8.dp),
+            )
         }
 
         SearchableSettingsGroup(search, header = stringResource(R.string.appearance)) {
