@@ -68,6 +68,12 @@ data class PlaybackState(
 )
 
 @Serializable
+data class PlaybackEvent(
+    @SerialName("device_id") val deviceId: String,
+    val state: PlaybackState,
+)
+
+@Serializable
 data class PlaybackCommand(
     val command: String,
     @SerialName("position_ms") val positionMs: Long? = null,

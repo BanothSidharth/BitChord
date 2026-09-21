@@ -40,7 +40,7 @@ import java.util.UUID
 /** Local-first client for the documented v1 backup contract. */
 object BackupService {
     val devices = MutableSharedFlow<List<Device>>(replay = 1, extraBufferCapacity = 1)
-    val playbackUpdates = MutableSharedFlow<PlaybackState>(replay = 1, extraBufferCapacity = 8)
+    val playbackUpdates = MutableSharedFlow<PlaybackEvent>(replay = 1, extraBufferCapacity = 8)
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -156,7 +156,16 @@ object BackupService {
                         if (frame is Frame.Text) {
                             val objectValue = json.parseToJsonElement(frame.readText()).jsonObject
                             objectValue["state"]?.let {
-                                playbackUpdates.emit(json.decodeFromJsonElement(PlaybackState.serializer(), it))
+                                val source = objectValue["device_id"]?.toString()?.trim('"')
+                                    ?: return@let
+                                if (source != BackupSettings.deviceId.value) {
+                                    playbackUpdates.emit(
+                                        PlaybackEvent(
+                                            deviceId = source,
+                                            state = json.decodeFromJsonElement(PlaybackState.serializer(), it),
+                                        ),
+                                    )
+                                }
                             }
                         }
                     }
@@ -169,7 +178,12 @@ object BackupService {
     private suspend fun applyChange(change: BackupChange) {
         if (change.type == "playback_state") {
             runCatching {
-                playbackUpdates.emit(json.decodeFromJsonElement(PlaybackState.serializer(), change.payload))
+                playbackUpdates.emit(
+                    PlaybackEvent(
+                        deviceId = "sync",
+                        state = json.decodeFromJsonElement(PlaybackState.serializer(), change.payload),
+                    ),
+                )
             }
         }
     }

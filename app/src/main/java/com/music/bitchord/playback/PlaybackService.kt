@@ -82,6 +82,7 @@ import com.music.bitchord.data.innertube.PlaybackTracker
 import com.music.bitchord.data.stats.ListeningRecorder
 import com.music.bitchord.data.backup.BackupService
 import com.music.bitchord.data.backup.PlaybackState
+import com.music.bitchord.data.backup.PlaybackEvent
 import com.music.bitchord.data.innertube.PlayerClient
 import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.LikeStatus
@@ -109,6 +110,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -544,6 +546,7 @@ class PlaybackService : MediaLibraryService() {
     private var discordPresenceUp = false
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var applyingBackupPlayback = false
 
     /**
      * Binds playback to a Listen Together party, when there is one.
@@ -661,13 +664,15 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) prefetchAround(exoPlayer) else cancelPrefetch()
             if (isPlaying) lookForBetterCopy(exoPlayer)
             savePlaybackState(exoPlayer)
-            BackupService.publishPlayback(
-                PlaybackState(
-                    mediaId = exoPlayer.currentMediaItem?.mediaId,
-                    positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
-                    playing = isPlaying,
-                ),
-            )
+            if (!applyingBackupPlayback) {
+                BackupService.publishPlayback(
+                    PlaybackState(
+                        mediaId = exoPlayer.currentMediaItem?.mediaId,
+                        positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
+                        playing = isPlaying,
+                    ),
+                )
+            }
             // Not strictly needed for the glyph — onPlayWhenReadyChanged has
             // already flipped that — but this is where hasNext/hasPrevious and
             // the artwork are known to be settled.
@@ -1384,6 +1389,11 @@ class PlaybackService : MediaLibraryService() {
         // After the player exists and before the session is built: the
         // session's wrapper reports the user's actions to it.
         partySync = PartySync(scope) { player }.also { it.start() }
+        scope.launch {
+            BackupService.playbackUpdates.collect { event ->
+                applyBackupPlayback(event)
+            }
+        }
         loadAutoplayForCurrentTrack()
 
         // Only the analytics listener reports the format the audio renderer was
@@ -1412,6 +1422,28 @@ class PlaybackService : MediaLibraryService() {
             .setSessionActivity(sessionActivity())
             .build()
         mediaSession?.setCustomLayout(notificationButtons())
+    }
+
+    private fun applyBackupPlayback(event: PlaybackEvent) {
+        val exoPlayer = player ?: return
+        val state = event.state
+        if (state.mediaId.isNullOrBlank() || state.mediaId != exoPlayer.currentMediaItem?.mediaId) {
+            return
+        }
+        applyingBackupPlayback = true
+        try {
+            val drift = state.positionMs - exoPlayer.currentPosition
+            if (kotlin.math.abs(drift) > 1_000L) {
+                exoPlayer.seekTo(state.positionMs.coerceAtLeast(0L))
+            }
+            if (state.playing && !exoPlayer.isPlaying) {
+                exoPlayer.play()
+            } else if (!state.playing && exoPlayer.isPlaying) {
+                exoPlayer.pause()
+            }
+        } finally {
+            applyingBackupPlayback = false
+        }
     }
 
     private fun createCrossfadeController() = CrossfadeController(
