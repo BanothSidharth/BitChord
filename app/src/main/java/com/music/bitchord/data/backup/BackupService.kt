@@ -48,7 +48,6 @@ object BackupService {
     private val mutex = Mutex()
     private lateinit var queueFile: File
     private var cursor: String? = null
-    private val deviceId = UUID.randomUUID().toString()
     private var client: HttpClient? = null
 
     fun init(context: Context) {
@@ -67,7 +66,7 @@ object BackupService {
         scope.launch {
             mutex.withLock {
                 val current = readQueue().toMutableList()
-                current += BackupChange(UUID.randomUUID().toString(), type, deviceId, payload)
+                current += BackupChange(UUID.randomUUID().toString(), type, BackupSettings.deviceId.value, payload)
                 writeQueue(current)
             }
             if (BackupSettings.autoSync.value) syncOnce()
@@ -79,7 +78,7 @@ object BackupService {
         scope.launch {
             request<Unit>("/playback") {
                 method = HttpMethod.Put
-                setBody(PlaybackUpdate(deviceId, state))
+                setBody(PlaybackUpdate(BackupSettings.deviceId.value, state))
             }
         }
     }
@@ -89,7 +88,7 @@ object BackupService {
         scope.launch {
             request<Unit>("/playback/commands") {
                 method = HttpMethod.Post
-                setBody(command)
+                setBody(command.copy(commandId = command.commandId ?: UUID.randomUUID().toString()))
             }
         }
     }
@@ -106,7 +105,7 @@ object BackupService {
             request<Unit>("/health") { method = HttpMethod.Get }
             request<Unit>("/devices/register") {
                 method = HttpMethod.Post
-                setBody(DeviceRegistration(deviceId, BackupSettings.deviceName.value, "android"))
+                setBody(DeviceRegistration(BackupSettings.deviceId.value, BackupSettings.deviceName.value, "android"))
             }
 
             val pending = mutex.withLock { readQueue() }

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.UUID
 
 /** Optional local-first backup configuration. Empty URL/token means disabled. */
 object BackupSettings {
@@ -13,6 +14,7 @@ object BackupSettings {
     val deviceName = MutableStateFlow("")
     val enabled = MutableStateFlow(false)
     val autoSync = MutableStateFlow(true)
+    val deviceId = MutableStateFlow("")
 
     private lateinit var prefs: SharedPreferences
 
@@ -33,6 +35,9 @@ object BackupSettings {
             .ifBlank { android.os.Build.MODEL }
         enabled.value = prefs.getBoolean(KEY_ENABLED, false)
         autoSync.value = prefs.getBoolean(KEY_AUTO_SYNC, true)
+        deviceId.value = prefs.getString(KEY_DEVICE_ID, null).orEmpty().ifBlank {
+            UUID.randomUUID().toString().also { prefs.edit().putString(KEY_DEVICE_ID, it).apply() }
+        }
     }
 
     fun setServerUrl(value: String) = update(KEY_URL, value.trim().trimEnd('/')) {
@@ -63,4 +68,5 @@ object BackupSettings {
     private const val KEY_DEVICE = "device_name"
     private const val KEY_ENABLED = "enabled"
     private const val KEY_AUTO_SYNC = "auto_sync"
+    private const val KEY_DEVICE_ID = "device_id"
 }
