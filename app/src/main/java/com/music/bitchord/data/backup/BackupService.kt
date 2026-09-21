@@ -32,7 +32,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.parseToJsonElement
+import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 import java.util.UUID
 
@@ -112,7 +112,9 @@ object BackupService {
                 parameter("cursor", cursor)
             }
             cursor = pulled.cursor ?: cursor
-            pulled.changes.forEach(::applyChange)
+            for (change in pulled.changes) {
+                applyChange(change)
+            }
             devices.tryEmit(request("/v1/devices", HttpMethod.Get))
         }.onFailure { Log.d(TAG, "Backup sync unavailable", it) }
     }
@@ -169,11 +171,13 @@ object BackupService {
     }
 
     private suspend fun readQueue(): List<BackupChange> =
-        runCatching { json.decodeFromString(queueFile.readText()) }.getOrDefault(emptyList())
+        runCatching {
+            json.decodeFromString<List<BackupChange>>(queueFile.readText())
+        }.getOrDefault(emptyList())
 
     private fun writeQueue(changes: List<BackupChange>) {
         val temp = File(queueFile.parentFile, "${queueFile.name}.tmp")
-        temp.writeText(json.encodeToString(changes))
+        temp.writeText(json.encodeToString(ListSerializer(BackupChange.serializer()), changes))
         check(temp.renameTo(queueFile)) { "Unable to replace backup queue" }
     }
 
