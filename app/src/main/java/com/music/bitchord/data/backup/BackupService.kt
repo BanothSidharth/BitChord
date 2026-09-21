@@ -6,19 +6,23 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
-import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.url
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.isActive
@@ -26,19 +30,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.parseToJsonElement
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.coroutines.channels.consumeEach
-import io.ktor.websocket.Frame
-import io.ktor.websocket.readText
 import java.io.File
 import java.util.UUID
 
-/**
- * Local-first client for the backup contract. The server is assumed to return
- * JSON using snake_case and to treat event_id as an idempotency key.
- */
+/** Local-first client for the documented v1 backup contract. */
 object BackupService {
     val devices = MutableSharedFlow<List<Device>>(replay = 1, extraBufferCapacity = 1)
     val playbackUpdates = MutableSharedFlow<PlaybackState>(replay = 1, extraBufferCapacity = 8)
@@ -48,7 +46,7 @@ object BackupService {
     private val mutex = Mutex()
     private lateinit var queueFile: File
     private var cursor: String? = null
-    private var client: HttpClient? = null
+    private lateinit var client: HttpClient
 
     fun init(context: Context) {
         queueFile = File(context.filesDir, "backup_queue.json")
@@ -65,9 +63,9 @@ object BackupService {
         if (!BackupSettings.configured) return
         scope.launch {
             mutex.withLock {
-                val current = readQueue().toMutableList()
-                current += BackupChange(UUID.randomUUID().toString(), type, BackupSettings.deviceId.value, payload)
-                writeQueue(current)
+                val changes = readQueue().toMutableList()
+                changes += BackupChange(UUID.randomUUID().toString(), type, payload)
+                writeQueue(changes)
             }
             if (BackupSettings.autoSync.value) syncOnce()
         }
@@ -76,18 +74,14 @@ object BackupService {
     fun publishPlayback(state: PlaybackState) {
         if (!BackupSettings.configured) return
         scope.launch {
-            request<Unit>("/playback") {
-                method = HttpMethod.Put
-                setBody(PlaybackUpdate(BackupSettings.deviceId.value, state))
-            }
+            request<Unit>("/v1/playback/state", HttpMethod.Put) { setBody(state) }
         }
     }
 
     fun sendCommand(deviceId: String, command: PlaybackCommand) {
         if (!BackupSettings.configured) return
         scope.launch {
-            request<Unit>("/playback/commands") {
-                method = HttpMethod.Post
+            request<Unit>("/v1/devices/$deviceId/commands", HttpMethod.Post) {
                 setBody(command.copy(commandId = command.commandId ?: UUID.randomUUID().toString()))
             }
         }
@@ -96,85 +90,82 @@ object BackupService {
     private suspend fun syncLoop() {
         while (scope.isActive) {
             if (BackupSettings.configured && BackupSettings.autoSync.value) syncOnce()
-            delay(SYNC_INTERVAL_MS)
+            delay(30_000)
         }
     }
 
     private suspend fun syncOnce() {
         runCatching {
-            request<Unit>("/health") { method = HttpMethod.Get }
-            request<Unit>("/devices/register") {
-                method = HttpMethod.Post
-                setBody(DeviceRegistration(BackupSettings.deviceId.value, BackupSettings.deviceName.value, "android"))
+            request<Unit>("/health", HttpMethod.Get)
+            request<Unit>("/v1/devices/register", HttpMethod.Post) {
+                setBody(DeviceRegistration(BackupSettings.deviceName.value))
             }
-
             val pending = mutex.withLock { readQueue() }
             if (pending.isNotEmpty()) {
-                val response = request<SyncPushResponse>("/sync/push") {
-                    method = HttpMethod.Post
+                val response = request<SyncPushResponse>("/v1/sync/push", HttpMethod.Post) {
                     setBody(SyncPushRequest(pending))
                 }
-                response.cursor?.let { cursor = it }
+                cursor = response.cursor ?: cursor
                 mutex.withLock { writeQueue(readQueue().drop(pending.size)) }
             }
-            val pulled = request<SyncPullResponse>("/sync/pull") {
-                method = HttpMethod.Get
+            val pulled = request<SyncPullResponse>("/v1/sync/pull", HttpMethod.Get) {
                 parameter("cursor", cursor)
             }
             cursor = pulled.cursor ?: cursor
-            pulled.changes.forEach { applyChange(it) }
-            val currentDevices = request<List<Device>>("/devices") { method = HttpMethod.Get }
-            devices.tryEmit(currentDevices)
-        }.onFailure { Log.w(TAG, "Backup sync unavailable", it) }
+            pulled.changes.forEach(::applyChange)
+            devices.tryEmit(request("/v1/devices", HttpMethod.Get))
+        }.onFailure { Log.d(TAG, "Backup sync unavailable", it) }
     }
 
     private suspend fun websocketLoop() {
         while (scope.isActive) {
             if (!BackupSettings.configured) {
-                delay(SYNC_INTERVAL_MS)
+                delay(30_000)
                 continue
             }
             runCatching {
                 val base = BackupSettings.serverUrl.value.trimEnd('/')
                     .replaceFirst("https://", "wss://")
                     .replaceFirst("http://", "ws://")
-                client!!.webSocket("$base/ws?token=${BackupSettings.token.value}") {
+                client.webSocket(request = {
+                    url("$base/v1/ws")
+                    header(HttpHeaders.Authorization, "Bearer " + BackupSettings.token.value)
+                }) {
                     incoming.consumeEach { frame ->
                         if (frame is Frame.Text) {
-                            runCatching {
-                                                val message = json.parseToJsonElement(frame.readText()).jsonObject
-                                                message["state"]?.let {
-                                                    playbackUpdates.emit(
-                                                        json.decodeFromJsonElement(PlaybackState.serializer(), it),
-                                                    )
-                                                }
+                            val objectValue = json.parseToJsonElement(frame.readText()).jsonObject
+                            objectValue["state"]?.let {
+                                playbackUpdates.emit(json.decodeFromJsonElement(PlaybackState.serializer(), it))
                             }
                         }
                     }
                 }
             }.onFailure { Log.d(TAG, "Backup websocket disconnected", it) }
-            delay(SYNC_INTERVAL_MS)
+            delay(30_000)
         }
     }
 
     private suspend fun applyChange(change: BackupChange) {
         if (change.type == "playback_state") {
-            runCatching { playbackUpdates.emit(json.decodeFromJsonElement(PlaybackState.serializer(), change.payload)) }
+            runCatching {
+                playbackUpdates.emit(json.decodeFromJsonElement(PlaybackState.serializer(), change.payload))
+            }
         }
     }
 
     private suspend inline fun <reified T> request(
         path: String,
-        block: io.ktor.client.request.HttpRequestBuilder.() -> Unit,
+        method: HttpMethod,
+        block: io.ktor.client.request.HttpRequestBuilder.() -> Unit = {},
     ): T {
         val base = BackupSettings.serverUrl.value.trimEnd('/')
         require(base.isNotBlank())
-        val response = client!!.request("$base$path") {
+        return client.request("$base$path") {
+            this.method = method
             header(HttpHeaders.Authorization, "Bearer " + BackupSettings.token.value)
             contentType(ContentType.Application.Json)
             block()
-        }
-        return response.body()
+        }.body()
     }
 
     private suspend fun readQueue(): List<BackupChange> =
@@ -187,5 +178,4 @@ object BackupService {
     }
 
     private const val TAG = "BackupService"
-    private const val SYNC_INTERVAL_MS = 30_000L
 }
