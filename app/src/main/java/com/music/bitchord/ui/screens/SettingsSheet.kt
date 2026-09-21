@@ -238,6 +238,7 @@ fun SettingsScreen(
     val backupEnabled by BackupSettings.enabled.collectAsStateWithLifecycle()
     val backupAutoSync by BackupSettings.autoSync.collectAsStateWithLifecycle()
     val backupDevices by BackupService.devices.collectAsStateWithLifecycle(initialValue = emptyList())
+    val activePlayback by BackupService.activePlayback.collectAsStateWithLifecycle(initialValue = null)
 
     LaunchedEffect(selectedPerformanceRefreshRate, performanceRefreshRate) {
         if (selectedPerformanceRefreshRate != performanceRefreshRate) {
@@ -751,6 +752,15 @@ fun SettingsScreen(
                         },
                     )
                 }
+            }
+            activePlayback?.deviceId?.let { activeId ->
+                val activeDevice = backupDevices.firstOrNull { it.id == activeId }
+                Text(
+                    "Currently playing on ${activeDevice?.name ?: activeId}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = ROW_INSET, vertical = 8.dp),
+                )
             }
             row("Enable backup", "backup", "sync", "server") {
                 SettingsRow(

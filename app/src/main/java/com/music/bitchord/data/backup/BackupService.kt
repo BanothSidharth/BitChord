@@ -42,6 +42,7 @@ object BackupService {
     val devices = MutableSharedFlow<List<Device>>(replay = 1, extraBufferCapacity = 1)
     val playbackUpdates = MutableSharedFlow<PlaybackEvent>(replay = 1, extraBufferCapacity = 8)
     val remoteCommands = MutableSharedFlow<RemoteCommandEvent>(replay = 0, extraBufferCapacity = 8)
+    val activePlayback = MutableSharedFlow<PlaybackSnapshot>(replay = 1, extraBufferCapacity = 1)
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -136,6 +137,7 @@ object BackupService {
                 applyChange(change)
             }
             devices.tryEmit(request("/devices", HttpMethod.Get))
+            activePlayback.emit(request("/playback", HttpMethod.Get))
         }.onFailure { Log.d(TAG, "Backup sync unavailable", it) }
     }
 

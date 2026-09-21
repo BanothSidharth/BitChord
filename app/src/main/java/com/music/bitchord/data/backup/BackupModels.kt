@@ -74,6 +74,13 @@ data class PlaybackEvent(
 )
 
 @Serializable
+data class PlaybackSnapshot(
+    @SerialName("device_id") val deviceId: String? = null,
+    val state: PlaybackState = PlaybackState(),
+    @SerialName("updated_at") val updatedAt: String? = null,
+)
+
+@Serializable
 data class RemoteCommandEvent(
     @SerialName("device_id") val deviceId: String,
     @SerialName("command_id") val commandId: String,
