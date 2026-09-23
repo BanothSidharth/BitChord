@@ -188,6 +188,13 @@ enum class LibraryViewType {
     GRID,
 }
 
+/** The surface that was last open inside the expanded player. */
+enum class LastPlayerScreen {
+    MAIN,
+    LYRICS,
+    QUEUE,
+}
+
 /**
  * App settings, backed by SharedPreferences and exposed as flows.
  *
@@ -307,8 +314,9 @@ object AppSettings {
     val preferUsbDac = MutableStateFlow(false)
 
     /**
-     * Level every track to the same loudness, by measuring it and applying one
-     * constant gain — see [com.music.bitchord.playback.LoudnessProcessor].
+     * Level every track to the same loudness, using YouTube's own
+     * normalization figure for it — see
+     * [com.music.bitchord.playback.PlaybackService.setupLoudnessEnhancer].
      *
      * On by default, which is the one genuinely contentious thing about it.
      * The case for it: a queue drawn from several sources is a queue of
@@ -320,56 +328,12 @@ object AppSettings {
      *
      * The case against it is that a constant gain is still a multiplication,
      * so this is the first thing in BitChord that is *on* out of the box and
-     * alters samples. That is what [bitPerfectMode] exists to answer, and why
-     * this setting yields to it unconditionally rather than negotiating.
+     * alters samples. Rather than hide that, the Audio Pipeline readout names
+     * it: its Bit-exact row reports the first stage in the chain that is
+     * altering samples, and switching this off is the first thing a listener
+     * chasing an untouched signal would do.
      */
     val loudnessNormalization = MutableStateFlow(true)
-
-    /**
-     * What [loudnessNormalization] brings tracks to, in LUFS.
-     *
-     * Defaults to [com.music.bitchord.playback.LoudnessProcessor.DEFAULT_TARGET_LUFS].
-     * Exposed because the right answer depends on where someone listens: -14
-     * matches the streaming services and suits headphones, while a noisy car
-     * or a phone speaker is better served louder even though that leaves less
-     * headroom for a quiet track to be boosted into.
-     */
-    val loudnessTargetLufs = MutableStateFlow(DEFAULT_LOUDNESS_TARGET_LUFS)
-
-    /**
-     * Deliver the decoder's samples to AudioTrack exactly as they were
-     * decoded.
-     *
-     * This is a promise, not a preference, and it is enforced in two places:
-     * [com.music.bitchord.playback.audio.DspChain] returns before any stage
-     * runs, and [com.music.bitchord.playback.audio.PrecisionAudioSink] picks
-     * the output encoding to preserve the source rather than to suit
-     * [outputPcmMode].
-     *
-     * Three things are worth being explicit about, because "bit-perfect" is a
-     * phrase that invites assumptions:
-     *
-     * - It turns off loudness normalization, the equaliser, spatial audio and
-     *   the transition filter *while it is on*. Their settings are not
-     *   rewritten — a listener who turns this off gets their equaliser curve
-     *   back exactly as they left it — but none of them touch a sample
-     *   meanwhile. There is no version of this where a filter runs and the
-     *   output is still bit-exact.
-     * - It *enables* PCM-float output rather than disabling it, which reads
-     *   backwards until you see what Media3 does with the alternative.
-     *   `DefaultAudioSink` has two linear-PCM output encodings, float and
-     *   16-bit, and inserts a 16-bit downconverter for every input encoding
-     *   when float is off. Float32's 24-bit significand is the only container
-     *   in that pair which holds a 24-bit sample whole.
-     * - It cannot make **32-bit integer PCM** exact. Twenty-four bits of
-     *   significand will not hold thirty-two, and there is no 32-bit integer
-     *   AudioTrack path through Media3 to use instead. The pipeline readout
-     *   reports that rather than claiming otherwise.
-     *
-     * Off by default. Most listeners are better served by level-matched
-     * playback than by a guarantee they have no way to hear.
-     */
-    val bitPerfectMode = MutableStateFlow(false)
 
     /**
      * Whether a source offering a Dolby Atmos rendition is allowed to serve it.
@@ -471,6 +435,9 @@ object AppSettings {
     /** Hides the volume slider on the main player, leaving the rest of the layout to reflow. */
     val hideVolumeBar = MutableStateFlow(false)
 
+    /** Hides the "Playing from" / "Played by" caption at the top of the main player. */
+    val hideSongStatus = MutableStateFlow(false)
+
     /** Swiping a song row plays it next instead of adding it to the end of the queue. */
     val swipeToPlayNext = MutableStateFlow(false)
 
@@ -534,6 +501,12 @@ object AppSettings {
      */
     val canvasOverCellular = MutableStateFlow(false)
 
+    /** Automatically collapses the lower controls after Spotify Canvas settles. */
+    val spotifyCanvasAutoHide = MutableStateFlow(true)
+
+    /** Tries Spotify before Apple Music and the other animated-art providers. */
+    val prioritizeSpotifyCanvas = MutableStateFlow(false)
+
     /**
      * Blows the player's cover art out to a full-bleed banner running off the
      * top of the screen, rather than sitting it in a square card.
@@ -562,6 +535,9 @@ object AppSettings {
      * reason is one a listener has to agree with.
      */
     val legacyMeshGradient = MutableStateFlow(false)
+
+    /** Restores the expanded player to the surface the listener left open. */
+    val lastPlayerScreen = MutableStateFlow(LastPlayerScreen.MAIN)
 
     /**
      * Time-synced lyrics on the player, lit up as they are sung.
@@ -837,9 +813,6 @@ object AppSettings {
         }.getOrDefault(OutputPcmMode.PCM_16)
         preferUsbDac.value = prefs.getBoolean(KEY_PREFER_USB_DAC, false)
         loudnessNormalization.value = prefs.getBoolean(KEY_LOUDNESS_NORMALIZATION, true)
-        loudnessTargetLufs.value = prefs.getFloat(KEY_LOUDNESS_TARGET_LUFS, DEFAULT_LOUDNESS_TARGET_LUFS)
-            .coerceIn(MIN_LOUDNESS_TARGET_LUFS, MAX_LOUDNESS_TARGET_LUFS)
-        bitPerfectMode.value = prefs.getBoolean(KEY_BIT_PERFECT_MODE, false)
         dolbyAtmos.value = prefs.getBoolean(KEY_DOLBY_ATMOS, true)
         spatialAudio.value = prefs.getBoolean(KEY_SPATIAL_AUDIO, false)
         equalizerEnabled.value = prefs.getBoolean(KEY_EQ_ENABLED, false)
@@ -867,6 +840,7 @@ object AppSettings {
         )
         stopOnTaskRemoved.value = prefs.getBoolean(KEY_STOP_ON_TASK_REMOVED, false)
         hideVolumeBar.value = prefs.getBoolean(KEY_HIDE_VOLUME_BAR, false)
+        hideSongStatus.value = prefs.getBoolean(KEY_HIDE_SONG_STATUS, false)
         swipeToPlayNext.value = prefs.getBoolean(KEY_SWIPE_TO_PLAY_NEXT, false)
         dontRepeatSuggestions.value = prefs.getBoolean(KEY_DONT_REPEAT_SUGGESTIONS, false)
         preferMusicOnly.value = prefs.getBoolean(KEY_PREFER_MUSIC_ONLY, false)
@@ -882,8 +856,15 @@ object AppSettings {
         }
         animatedCanvas.value = prefs.getBoolean(KEY_ANIMATED_CANVAS, true)
         canvasOverCellular.value = prefs.getBoolean(KEY_CANVAS_OVER_CELLULAR, false)
+        spotifyCanvasAutoHide.value = prefs.getBoolean(KEY_SPOTIFY_CANVAS_AUTO_HIDE, true)
+        prioritizeSpotifyCanvas.value = prefs.getBoolean(KEY_PRIORITIZE_SPOTIFY_CANVAS, false)
         fullBleedArtwork.value = prefs.getBoolean(KEY_FULL_BLEED_ARTWORK, true)
         legacyMeshGradient.value = prefs.getBoolean(KEY_LEGACY_MESH_GRADIENT, false)
+        lastPlayerScreen.value = runCatching {
+            LastPlayerScreen.valueOf(
+                prefs.getString(KEY_LAST_PLAYER_SCREEN, null) ?: LastPlayerScreen.MAIN.name,
+            )
+        }.getOrDefault(LastPlayerScreen.MAIN)
         syncedLyrics.value = prefs.getBoolean(KEY_SYNCED_LYRICS, true)
         lyricsSources.value = readLyricsSources()
         lyricsSourceOrder.value = readLyricsSourceOrder()
@@ -1207,6 +1188,11 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_HIDE_VOLUME_BAR, value).apply()
     }
 
+    fun setHideSongStatus(value: Boolean) {
+        hideSongStatus.value = value
+        prefs.edit().putBoolean(KEY_HIDE_SONG_STATUS, value).apply()
+    }
+
     fun setSwipeToPlayNext(value: Boolean) {
         swipeToPlayNext.value = value
         prefs.edit().putBoolean(KEY_SWIPE_TO_PLAY_NEXT, value).apply()
@@ -1385,6 +1371,16 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_CANVAS_OVER_CELLULAR, value).apply()
     }
 
+    fun setSpotifyCanvasAutoHide(value: Boolean) {
+        spotifyCanvasAutoHide.value = value
+        prefs.edit().putBoolean(KEY_SPOTIFY_CANVAS_AUTO_HIDE, value).apply()
+    }
+
+    fun setPrioritizeSpotifyCanvas(value: Boolean) {
+        prioritizeSpotifyCanvas.value = value
+        prefs.edit().putBoolean(KEY_PRIORITIZE_SPOTIFY_CANVAS, value).apply()
+    }
+
     fun setFullBleedArtwork(value: Boolean) {
         fullBleedArtwork.value = value
         prefs.edit().putBoolean(KEY_FULL_BLEED_ARTWORK, value).apply()
@@ -1393,6 +1389,12 @@ object AppSettings {
     fun setLegacyMeshGradient(value: Boolean) {
         legacyMeshGradient.value = value
         prefs.edit().putBoolean(KEY_LEGACY_MESH_GRADIENT, value).apply()
+    }
+
+    fun setLastPlayerScreen(value: LastPlayerScreen) {
+        if (lastPlayerScreen.value == value) return
+        lastPlayerScreen.value = value
+        prefs.edit().putString(KEY_LAST_PLAYER_SCREEN, value.name).apply()
     }
 
     /** Clamped to [DEFAULT_CACHE_LIMIT_BYTES]..[MAX_CACHE_LIMIT_BYTES] — the floor is the default, not zero. */
@@ -1465,17 +1467,6 @@ object AppSettings {
     fun setLoudnessNormalization(value: Boolean) {
         loudnessNormalization.value = value
         prefs.edit().putBoolean(KEY_LOUDNESS_NORMALIZATION, value).apply()
-    }
-
-    fun setLoudnessTargetLufs(value: Float) {
-        val clamped = value.coerceIn(MIN_LOUDNESS_TARGET_LUFS, MAX_LOUDNESS_TARGET_LUFS)
-        loudnessTargetLufs.value = clamped
-        prefs.edit().putFloat(KEY_LOUDNESS_TARGET_LUFS, clamped).apply()
-    }
-
-    fun setBitPerfectMode(value: Boolean) {
-        bitPerfectMode.value = value
-        prefs.edit().putBoolean(KEY_BIT_PERFECT_MODE, value).apply()
     }
 
     fun setExportDownloads(value: Boolean) {
@@ -1851,8 +1842,6 @@ object AppSettings {
     private const val KEY_OUTPUT_PCM_MODE = "output_pcm_mode"
     private const val KEY_PREFER_USB_DAC = "prefer_usb_dac"
     private const val KEY_LOUDNESS_NORMALIZATION = "loudness_normalization"
-    private const val KEY_LOUDNESS_TARGET_LUFS = "loudness_target_lufs"
-    private const val KEY_BIT_PERFECT_MODE = "bit_perfect_mode"
     private const val KEY_DOLBY_ATMOS = "dolby_atmos"
     private const val KEY_SPATIAL_AUDIO = "spatial_audio"
     private const val KEY_EQ_ENABLED = "equalizer_enabled"
@@ -1874,6 +1863,7 @@ object AppSettings {
     private const val KEY_PERFORMANCE_REFRESH_RATE = "performance_refresh_rate"
     private const val KEY_STOP_ON_TASK_REMOVED = "stop_on_task_removed"
     private const val KEY_HIDE_VOLUME_BAR = "hide_volume_bar"
+    private const val KEY_HIDE_SONG_STATUS = "hide_song_status"
     private const val KEY_SWIPE_TO_PLAY_NEXT = "swipe_to_play_next"
     private const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
     private const val KEY_PREFER_MUSIC_ONLY = "prefer_music_only"
@@ -1884,8 +1874,11 @@ object AppSettings {
     private const val KEY_TRANSLATION_LANGUAGE = "translation_language"
     private const val KEY_ANIMATED_CANVAS = "animated_canvas"
     private const val KEY_CANVAS_OVER_CELLULAR = "canvas_over_cellular"
+    private const val KEY_SPOTIFY_CANVAS_AUTO_HIDE = "spotify_canvas_auto_hide"
+    private const val KEY_PRIORITIZE_SPOTIFY_CANVAS = "prioritize_spotify_canvas"
     private const val KEY_FULL_BLEED_ARTWORK = "full_bleed_artwork"
     private const val KEY_LEGACY_MESH_GRADIENT = "legacy_mesh_gradient"
+    private const val KEY_LAST_PLAYER_SCREEN = "last_player_screen"
     private const val KEY_SYNCED_LYRICS = "synced_lyrics"
     private const val KEY_LYRICS_SOURCES = "lyrics_sources"
     private const val KEY_LYRICS_SOURCES_SEEN = "lyrics_sources_seen"

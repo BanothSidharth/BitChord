@@ -181,6 +181,7 @@
     <string name="dolby_atmos_unavailable">This device can\'t play Atmos, so these songs play in their usual version</string>
     <string name="spatial_audio">Spatial audio</string>
     <string name="spatial_audio_subtitle">Widens stereo tracks for a more immersive feel</string>
+    <string name="spatial_audio_atmos_subtitle">Paused for this track — Dolby Atmos is already spatial</string>
     <string name="animated_cover_cellular">Play animated cover over cellular</string>
     <string name="replay">Replay</string>
     <string name="replay_subtitle">Your top songs, artists, albums and genres</string>
@@ -243,6 +244,7 @@
     <string name="automix_mode_performance_subtitle">4 threads · fastest analysis · higher heat and battery use</string>
     <string name="skip_silence">Skip silence</string>
     <string name="skip_silence_subtitle">Trim gaps longer than a second</string>
+    <string name="skip_silence_float_subtitle">Unavailable on 32-bit float output</string>
     <string name="prefer_music_only">Prefer music-only version</string>
     <string name="prefer_music_only_subtitle">For music videos, show the video details while finding and loading the catalogue audio version</string>
     <string name="equalizer">Equalizer</string>
@@ -265,9 +267,9 @@
     <string name="equalizer_balance_left">L</string>
     <string name="equalizer_balance_right">R</string>
     <string name="equalizer_balance_footer">Shifts the sound towards one ear by quietening the other.</string>
-    <string name="equalizer_float_title">Not running right now</string>
-    <string name="equalizer_float_subtitle">32-bit float output is in use</string>
-    <string name="equalizer_float_footer">Android plays float audio through a path with no room for effects, so the equaliser, spatial audio and silence skipping are all bypassed. Set output to 16-bit PCM to use them.</string>
+    <string name="equalizer_bitstream_title">Not running right now</string>
+    <string name="equalizer_bitstream_subtitle">This track is sent to the output undecoded</string>
+    <string name="equalizer_bitstream_footer">The equaliser works on decoded audio. This track is passed through as a bitstream for your device to decode, so there are no samples here to filter.</string>
     <string name="system_equalizer">System equalizer</string>
     <string name="system_equalizer_subtitle">Your device\'s own panel</string>
     <string name="system_equalizer_footer">Runs after BitChord\'s, on the whole audio session. Using both applies both.</string>
@@ -316,6 +318,8 @@
     <string name="stop_music_on_close_subtitle">Stops playback when swiped away from recent apps</string>
     <string name="hide_volume_bar">Hide volume bar</string>
     <string name="hide_volume_bar_subtitle">Removes the volume slider from the main player</string>
+    <string name="hide_song_status">Hide Song Status</string>
+    <string name="hide_song_status_subtitle">Hides the “Playing from” or “Played by” text in the main player</string>
     <string name="off">Off</string>
     <string name="low">Low</string>
     <string name="medium">Medium</string>
@@ -364,9 +368,14 @@
     <string name="clear_name">Clear name</string>
     <string name="close_lyrics">Close lyrics</string>
     <string name="translate_lyrics">Translate lyrics</string>
+    <string name="romanize_lyrics">Romanize lyrics</string>
     <string name="show_original_lyrics">Show original lyrics</string>
     <string name="translating_lyrics_to">Translating to %1$s…</string>
     <string name="lyrics_translated_to">Translated to %1$s</string>
+    <string name="romanizing_lyrics">Romanizing lyrics…</string>
+    <string name="lyrics_romanized">Romanized pronunciation</string>
+    <string name="lyrics_already_romanized">These lyrics already use Latin characters</string>
+    <string name="lyrics_romanization_unavailable">Romanization is unavailable for these lyrics</string>
     <string name="lyrics_already_in_language">These lyrics are already in %1$s</string>
     <string name="lyrics_translation_unavailable">Translation is unavailable right now</string>
     <string name="translation_language">Translation language</string>
@@ -411,6 +420,13 @@
     <string name="instrumental">Instrumental</string>
     <string name="pause">Pause</string>
     <string name="lyrics_by">Lyrics by %1$s</string>
+    <string name="change_lyrics_provider">Change</string>
+    <string name="choose_lyrics_provider">Choose lyrics provider</string>
+    <string name="lyrics_provider_current">Current provider</string>
+    <string name="lyrics_provider_found">Lyrics found · Tap to use</string>
+    <string name="lyrics_provider_not_found">Lyrics not found</string>
+    <string name="lyrics_provider_fetching">Fetching lyrics…</string>
+    <string name="lyrics_provider_not_fetched">Tap to fetch</string>
     <string name="no_lyrics_found">No lyrics found</string>
     <string name="lyrics_saved_with_download">Lyrics saved with this download</string>
     <string name="shuffle_on">Shuffle on</string>
@@ -616,6 +632,9 @@
     <string name="sources_order_footer">If a source does not have a track or cannot be reached, BitChord tries the next one. Sources above YouTube can replace its recording when they return a better version.</string>
     <string name="sources_order_header">Sources, tried in this order</string>
     <string name="sources_quality_capped">This connection is set below High quality, so streams are transcoded to fit that limit. Downloads are unaffected.</string>
+    <string name="jiosaavn_mismatch_warning">May match the wrong version of a song. Enable at your own risk.</string>
+    <string name="enable_jiosaavn">Enable JioSaavn?</string>
+    <string name="enable_anyway">Enable anyway</string>
     <string name="sources_subtitle">Where audio comes from and the order used</string>
     <string name="source_matching">Source matching</string>
     <string name="upgrade_length_slack">Track length tolerance</string>
@@ -626,6 +645,10 @@
     <string name="spotify_canvas_setup">Spotify Canvas setup</string>
     <string name="spotify_canvas_setup_description">To use Spotify Canvas, provide your Spotify sp_dc cookie.</string>
     <string name="spotify_canvas_setup_steps">1. Sign in at open.spotify.com in a browser.\n2. Open Developer Tools, then Application and Cookies.\n3. Copy the value of the sp_dc cookie.\n4. Paste it below.</string>
+    <string name="spotify_canvas_auto_hide">Auto-hide player controls</string>
+    <string name="spotify_canvas_auto_hide_subtitle">Collapse the half-player after 5 seconds while Spotify Canvas is playing</string>
+    <string name="prioritize_spotify_canvas">Prioritize Spotify Canvas</string>
+    <string name="prioritize_spotify_canvas_subtitle">Try Spotify before Apple Music and other animated cover providers</string>
     <string name="status">Status</string>
     <string name="status_dialog_message">What your account shows while presence is active.</string>
     <string name="status_dnd">Do not disturb</string>
@@ -856,6 +879,7 @@
     <string name="listen_together_custom_server">Use your own server</string>
     <string name="listen_together_custom_server_footer">Leave this empty to use the default server. If you run your own copy, everyone in the party has to be pointed at the same one.</string>
     <string name="listen_together_using_default">Using default server</string>
+    <string name="listen_together_remove_server">Remove server</string>
     <string name="listen_together_switched_to_default">Switched to default server</string>
     <string name="listen_together_custom_server_saved">Custom server saved</string>
     <string name="listen_together_create">Create a party</string>
@@ -896,6 +920,23 @@
     <string name="listen_together_host">Host</string>
     <string name="listen_together_away">Away — their slot is held</string>
     <string name="listen_together_manage">Manage</string>
+    <string name="listen_together_landing_title">Start a party</string>
+    <string name="listen_together_landing_subtitle">Because music sounds better together. Invite friends to listen and add songs in real time, wherever they are.</string>
+    <string name="listen_together_create_action">Create a party</string>
+    <string name="listen_together_join_existing">Join existing</string>
+    <string name="listen_together_create_sheet_subtitle">Pick how you’ll show up, and how many can join.</string>
+    <string name="listen_together_creating">Creating…</string>
+    <string name="listen_together_joining">Joining…</string>
+    <string name="listen_together_full">This party is full</string>
+    <string name="listen_together_join_question">Join %1$s’s party?</string>
+    <string name="listen_together_join_question_unnamed">Join this party?</string>
+    <string name="listen_together_not_now">Not now</string>
+    <string name="listen_together_preview_footer">People in the party will see your name and profile picture.</string>
+    <string name="listen_together_invite_title">Invite friends to your party</string>
+    <string name="listen_together_share_link">Share link</string>
+    <string name="listen_together_scan_qr">Scan QR code</string>
+    <string name="listen_together_scan_qr_subtitle">Let friends scan this to join.</string>
+    <string name="listen_together_invite">Invite</string>
     <string name="listen_together_host_only">Only I control the music</string>
     <string name="listen_together_host_only_subtitle">Everyone else listens along and can pause on their own device</string>
     <string name="listen_together_host_only_notice">Only the host can control the music</string>
@@ -950,18 +991,6 @@
     <string name="loudness_target_subtitle">Quieter suits headphones; louder suits a car or a phone speaker</string>
 
     <string name="loudness_target_value">%1$s LUFS</string>
-
-    <string name="bit_perfect_mode">Bit-perfect</string>
-
-    <string name="bit_perfect_mode_subtitle">Sends decoded audio to the output untouched</string>
-
-    <string name="bit_perfect_disables_dsp">Turns off loudness, EQ and spatial audio while on</string>
-
-    <string name="disabled_by_bit_perfect">Unavailable while Bit-perfect is on</string>
-
-    <string name="bit_perfect_active">Exact</string>
-
-    <string name="bit_perfect_converted">Converted</string>
 
     <string name="pipeline_loudness">Loudness</string>
 

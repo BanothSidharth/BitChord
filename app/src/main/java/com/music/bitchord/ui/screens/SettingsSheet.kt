@@ -2,6 +2,7 @@ package com.music.bitchord.ui.screens
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioFormat
 import android.media.audiofx.AudioEffect
 import android.net.Uri
 import android.provider.Settings
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.LocalOffer
 import androidx.compose.material.icons.rounded.MusicOff
@@ -63,7 +65,6 @@ import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material.icons.rounded.Storage
-import androidx.compose.material.icons.rounded.Straighten
 import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VolumeOff
@@ -132,6 +133,7 @@ import com.music.bitchord.ui.performance.resolvePerformanceRefreshRate
 import com.music.bitchord.ui.performance.supportedPerformanceRefreshRates
 import com.music.bitchord.data.model.Account
 import com.music.bitchord.data.LocalMediaRepository
+import com.music.bitchord.data.NerdStats
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.listentogether.ListenTogether
 import com.music.bitchord.data.settings.AppSettings
@@ -211,9 +213,9 @@ fun SettingsScreen(
     val outputPcmMode by AppSettings.outputPcmMode.collectAsStateWithLifecycle()
     val preferUsbDac by AppSettings.preferUsbDac.collectAsStateWithLifecycle()
     val loudnessNormalization by AppSettings.loudnessNormalization.collectAsStateWithLifecycle()
-    val loudnessTargetLufs by AppSettings.loudnessTargetLufs.collectAsStateWithLifecycle()
-    val bitPerfectMode by AppSettings.bitPerfectMode.collectAsStateWithLifecycle()
     val outputStatus by AudioOutputStatus.current.collectAsStateWithLifecycle()
+    val playingFormat by NerdStats.current.collectAsStateWithLifecycle()
+    val playingDolbyAtmos = playingFormat?.isDolbyAtmos == true
     val cacheLimitBytes by AppSettings.audioCacheLimitBytes.collectAsStateWithLifecycle()
     val downloadQuality by AppSettings.downloadQuality.collectAsStateWithLifecycle()
     val wifiOnlyDownloads by AppSettings.wifiOnlyDownloads.collectAsStateWithLifecycle()
@@ -221,6 +223,7 @@ fun SettingsScreen(
     val autoDownloadLikedSongs by AppSettings.autoDownloadLikedSongs.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by AppSettings.stopOnTaskRemoved.collectAsStateWithLifecycle()
     val hideVolumeBar by AppSettings.hideVolumeBar.collectAsStateWithLifecycle()
+    val hideSongStatus by AppSettings.hideSongStatus.collectAsStateWithLifecycle()
     val swipeToPlayNext by AppSettings.swipeToPlayNext.collectAsStateWithLifecycle()
     val dontRepeatSuggestions by AppSettings.dontRepeatSuggestions.collectAsStateWithLifecycle()
     val preferMusicOnly by AppSettings.preferMusicOnly.collectAsStateWithLifecycle()
@@ -588,59 +591,15 @@ fun SettingsScreen(
                     badge = stringResource(R.string.connected).takeIf { outputStatus.isUsb },
                 )
             }
-            val bitPerfectTitle = stringResource(R.string.bit_perfect_mode)
-            row(bitPerfectTitle, "bit perfect", "exact", "passthrough", "dsp", "dac") {
-                SettingsRow(
-                    icon = Icons.Rounded.Straighten,
-                    title = bitPerfectTitle,
-                    // The second line is the whole of the trade, so it is on
-                    // the row rather than buried in a dialog: this mode is
-                    // only bit-exact because nothing else is allowed to run,
-                    // and someone turning it on has a right to know that their
-                    // equaliser stops working before they wonder why.
-                    subtitle = if (bitPerfectMode) {
-                        stringResource(R.string.bit_perfect_disables_dsp)
-                    } else {
-                        stringResource(R.string.bit_perfect_mode_subtitle)
-                    },
-                    badge = when {
-                        !bitPerfectMode -> null
-                        outputStatus.bitPerfectActive -> stringResource(R.string.bit_perfect_active)
-                        // On, but the route cannot open a track in the
-                        // decoder's own encoding, so something downstream is
-                        // converting anyway. Saying so beats a badge that
-                        // claims a guarantee the hardware is not keeping.
-                        else -> stringResource(R.string.bit_perfect_converted)
-                    },
-                    trailing = {
-                        Switch(
-                            checked = bitPerfectMode,
-                            onCheckedChange = AppSettings::setBitPerfectMode,
-                            colors = SwitchDefaults.colors(
-                                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                checkedBorderColor = MaterialTheme.colorScheme.primary,
-                            ),
-                        )
-                    },
-                    onClick = { AppSettings.setBitPerfectMode(!bitPerfectMode) },
-                )
-            }
             val loudnessTitle = stringResource(R.string.loudness_normalization)
             row(loudnessTitle, "loudness", "volume", "normalize", "replaygain", "lufs") {
                 SettingsRow(
                     icon = Icons.Rounded.VolumeUp,
                     title = loudnessTitle,
                     subtitle = stringResource(R.string.loudness_normalization_subtitle),
-                    // Greyed rather than hidden while bit-perfect is on. The
-                    // setting is still the listener's and is still whatever
-                    // they left it at; it is simply not in force, and showing
-                    // it dimmed says that where removing the row would leave
-                    // them hunting for a switch that had vanished.
-                    enabled = !bitPerfectMode,
                     trailing = {
                         Switch(
-                            checked = loudnessNormalization && !bitPerfectMode,
-                            enabled = !bitPerfectMode,
+                            checked = loudnessNormalization,
                             onCheckedChange = AppSettings::setLoudnessNormalization,
                             colors = SwitchDefaults.colors(
                                 checkedTrackColor = MaterialTheme.colorScheme.primary,
@@ -650,21 +609,6 @@ fun SettingsScreen(
                     },
                     onClick = { AppSettings.setLoudnessNormalization(!loudnessNormalization) },
                 )
-                if (loudnessNormalization && !bitPerfectMode) {
-                    SliderRow(
-                        icon = Icons.Rounded.Tune,
-                        title = stringResource(R.string.loudness_target),
-                        subtitle = stringResource(R.string.loudness_target_subtitle),
-                        value = stringResource(
-                            R.string.loudness_target_value,
-                            loudnessTargetLufs.roundToInt().toString(),
-                        ),
-                        sliderValue = loudnessTargetLufs,
-                        onSliderValue = { AppSettings.setLoudnessTargetLufs(it.roundToInt().toFloat()) },
-                        valueRange = AppSettings.MIN_LOUDNESS_TARGET_LUFS..AppSettings.MAX_LOUDNESS_TARGET_LUFS,
-                        steps = LOUDNESS_TARGET_STEPS,
-                    )
-                }
             }
             // Automix decides its own length from each pair of tracks —
             // tempo, key, structure — so it replaces the manual slider rather
@@ -722,7 +666,18 @@ fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.AutoMirrored.Rounded.VolumeOff,
                     title = skipSilenceTitle,
-                    subtitle = stringResource(R.string.skip_silence_subtitle),
+                    // Silence skipping is Media3's own processor, and
+                    // `DefaultAudioSink.configure` appends that processor list
+                    // only on its 16-bit branch — the float branch gets the
+                    // format converter and nothing else. So on a float track
+                    // this switch really does nothing, and the row says so
+                    // rather than letting someone toggle it and wonder. The
+                    // equaliser is unaffected: it runs upstream of that sink.
+                    subtitle = if (outputStatus.actualEncoding == AudioFormat.ENCODING_PCM_FLOAT) {
+                        stringResource(R.string.skip_silence_float_subtitle)
+                    } else {
+                        stringResource(R.string.skip_silence_subtitle)
+                    },
                     trailing = {
                         Switch(
                             checked = skipSilence,
@@ -741,20 +696,22 @@ fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.Rounded.SurroundSound,
                     title = spatialAudioTitle,
-                    subtitle = if (bitPerfectMode) {
-                        stringResource(R.string.disabled_by_bit_perfect)
+                    // Widening a JOC stream would fight the object-based mix
+                    // Dolby has already spatialized, so the service holds this
+                    // off for the duration of an Atmos track — see
+                    // `PlaybackService.applySpatialAudioEnabled`. Said on the
+                    // row because the switch stays where the listener left it,
+                    // and a switch reading "on" over an effect that is not
+                    // running is the same silent lie the equaliser screen used
+                    // to tell.
+                    subtitle = if (playingDolbyAtmos) {
+                        stringResource(R.string.spatial_audio_atmos_subtitle)
                     } else {
                         stringResource(R.string.spatial_audio_subtitle)
                     },
-                    // Greyed rather than hidden, and the setting is not
-                    // rewritten: widening is a filter, so it cannot run and
-                    // leave the output bit-exact, but it is still the
-                    // listener's choice and comes back when the mode goes off.
-                    enabled = !bitPerfectMode,
                     trailing = {
                         Switch(
-                            checked = spatialAudio && !bitPerfectMode,
-                            enabled = !bitPerfectMode,
+                            checked = spatialAudio,
                             onCheckedChange = AppSettings::setSpatialAudio,
                             colors = SwitchDefaults.colors(
                                 checkedTrackColor = MaterialTheme.colorScheme.primary,
@@ -774,15 +731,7 @@ fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.Rounded.Tune,
                     title = equalizerTitle,
-                    subtitle = if (bitPerfectMode) {
-                        stringResource(R.string.disabled_by_bit_perfect)
-                    } else {
-                        stringResource(R.string.equalizer_subtitle)
-                    },
-                    // The row opens a whole screen, so it is closed off rather
-                    // than left tappable: a listener who got into the
-                    // equaliser here would drag a band and hear nothing move.
-                    enabled = !bitPerfectMode,
+                    subtitle = stringResource(R.string.equalizer_subtitle),
                     onClick = onEqualizer,
                 )
             }
@@ -1347,6 +1296,25 @@ fun SettingsScreen(
                     onClick = { AppSettings.setHideVolumeBar(!hideVolumeBar) },
                 )
             }
+            val hideSongStatusTitle = stringResource(R.string.hide_song_status)
+            row(hideSongStatusTitle, "player", "playing from", "played by") {
+                SettingsRow(
+                    icon = Icons.Rounded.VisibilityOff,
+                    title = hideSongStatusTitle,
+                    subtitle = stringResource(R.string.hide_song_status_subtitle),
+                    trailing = {
+                        Switch(
+                            checked = hideSongStatus,
+                            onCheckedChange = AppSettings::setHideSongStatus,
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                checkedBorderColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        )
+                    },
+                    onClick = { AppSettings.setHideSongStatus(!hideSongStatus) },
+                )
+            }
         }
 
         SearchableSettingsGroup(search, header = stringResource(R.string.language)) {
@@ -1751,13 +1719,6 @@ internal fun openEqualizer(context: Context, sessionId: Int) {
 
 /** Above this, the cache limit slider's subtitle warns rather than reassures. */
 private const val CACHE_WARNING_MB = 2048
-
-/**
- * Stops on the loudness target slider, one per LUFS across the settable
- * range. Compose counts the stops *between* the ends, hence the -1.
- */
-private val LOUDNESS_TARGET_STEPS =
-    (AppSettings.MAX_LOUDNESS_TARGET_LUFS - AppSettings.MIN_LOUDNESS_TARGET_LUFS).toInt() - 1
 
 /** "512 MB", "2 GB", "2.5 GB" — whichever reads more naturally at that size. */
 private fun formatCacheSize(mb: Int): String {

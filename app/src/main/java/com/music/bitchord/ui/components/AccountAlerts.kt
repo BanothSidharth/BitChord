@@ -337,6 +337,14 @@ fun AddonEditorAlert(
     onSave: () -> Unit,
     /** Offered only for a source already stored — there is nothing to remove otherwise. */
     onRemove: (() -> Unit)?,
+    /**
+     * What [onRemove] is called, for the callers that are not removing a source.
+     *
+     * The party server's address wears this same card — one field, an address
+     * to test, four stacked actions — and "Remove source" would be the one line
+     * on it still talking about addons.
+     */
+    removeLabel: String? = null,
     onDismiss: () -> Unit,
 ) {
     AlertScaffold(hazeState = hazeState, onDismiss = { if (!testing) onDismiss() }) {
@@ -395,7 +403,7 @@ fun AddonEditorAlert(
         if (onRemove != null) {
             AlertRule()
             AlertAction(
-                label = stringResource(R.string.remove_source),
+                label = removeLabel ?: stringResource(R.string.remove_source),
                 emphasised = false,
                 destructive = true,
                 onClick = onRemove,
@@ -409,6 +417,49 @@ fun AddonEditorAlert(
             onClick = onDismiss,
             enabled = !testing,
         )
+    }
+}
+
+/**
+ * A two-action confirmation using the same frosted UIAlertController shell as
+ * the addon editor. Kept here so warnings opened from settings do not fall back
+ * to a visually unrelated Material dialog.
+ */
+@OptIn(ExperimentalHazeMaterialsApi::class)
+@Composable
+fun ConfirmationAlert(
+    hazeState: HazeState,
+    title: String,
+    description: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertScaffold(hazeState = hazeState, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 19.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, fontWeight = FontWeight.W600),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = description,
+                modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+        }
+        AlertRule()
+        AlertAction(label = confirmLabel, emphasised = true, onClick = onConfirm)
+        AlertRule()
+        AlertAction(label = stringResource(R.string.cancel), emphasised = false, onClick = onDismiss)
     }
 }
 
