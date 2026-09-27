@@ -87,12 +87,8 @@
             android:resource="@xml/automotive_app_desc" />
 
         <!--
-          No android:screenOrientation here, and that is deliberate rather than
-          an omission: this attribute takes a constant, so setting it would
-          lock every device and leaving it off would free every device, and
-          neither is what this app wants. Tablets rotate, phones do not — a
-          question only a resource can answer, so MainActivity.onCreate asks
-          R.bool.allow_rotation and sets requestedOrientation from it.
+          No android:screenOrientation here, deliberately: the app follows the
+          system's own auto-rotate setting on every device, phones included.
 
           [android:configChanges] is the other half of that: without it, a
           rotation the system now allows is still a full Activity restart,
@@ -246,6 +242,14 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <!--
           Downloads. Not exported: it is started by the app and by its own
           cancel action, and nothing outside has any business queueing work.
@@ -287,6 +291,19 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_media_wide" />
+        </receiver>
+
+        <!-- The 4×1 capsule. Its own provider and layout; see MediaWidgetPill. -->
+        <receiver
+            android:name=".widget.MediaWidgetPill"
+            android:exported="false"
+            android:label="@string/widget_pill_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_media_pill" />
         </receiver>
 
         <!-- The transport buttons. Reached only by this app's own PendingIntents. -->

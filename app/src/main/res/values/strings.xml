@@ -6,6 +6,14 @@
     <string name="download_notification_title">Downloading</string>
     <string name="download_notification_starting">Starting</string>
     <string name="download_notification_queued">%1$s · %2$d more queued</string>
+    <string name="upload_channel_name">Uploads</string>
+    <string name="upload_channel_description">Songs being sent to your WebDAV server</string>
+    <string name="upload_notification_title">Uploading</string>
+    <string name="upload_notification_queued">%1$s · %2$d more queued</string>
+    <plurals name="uploading_song_count">
+        <item quantity="one">Uploading %1$d song</item>
+        <item quantity="other">Uploading %1$d songs</item>
+    </plurals>
     <string name="cancel">Cancel</string>
     <string name="save">Save</string>
     <string name="close">Close</string>
@@ -117,6 +125,8 @@
     <string name="rich_presence">Rich presence</string>
     <string name="scrobbling">Scrobbling</string>
     <string name="now_playing">Now playing</string>
+    <string name="next_in_queue">Next in queue</string>
+    <string name="next_from">Next from: %1$s</string>
     <string name="selected">Selected</string>
     <string name="select_all">Select all</string>
     <string name="password">Password</string>
@@ -170,9 +180,13 @@
     <string name="widget_open_bitchord">Open BitChord</string>
     <string name="widget_preview_title">Song title</string>
     <string name="widget_preview_artist">Artist</string>
+    <string name="widget_pill_label">Now playing 4×1</string>
+    <string name="widget_pill_description">The track with Like, Shuffle and playback controls, in a single row.</string>
+    <string name="widget_preview_pill">Song title - Artist</string>
     <string name="download_quality">Download quality</string>
     <string name="download_wifi_only">Download over Wi-Fi only</string>
     <string name="convert_to_audio">Convert to audio</string>
+    <string name="convert_to_video">Convert to video</string>
     <string name="converting_to_audio">Converting to audio…</string>
     <string name="revert_to_original">Revert to original</string>
     <string name="upgrade_quality">Upgrade quality</string>
@@ -247,6 +261,8 @@
     <string name="skip_silence_float_subtitle">Unavailable on 32-bit float output</string>
     <string name="prefer_music_only">Prefer music-only version</string>
     <string name="prefer_music_only_subtitle">For music videos, show the video details while finding and loading the catalogue audio version</string>
+    <string name="smart_version_alignment">Smart audio alignment</string>
+    <string name="smart_version_alignment_subtitle">Analyze audio waveforms to match the exact corresponding playback moment</string>
     <string name="equalizer">Equalizer</string>
     <string name="equalizer_subtitle">Tone, seven bands and balance</string>
     <string name="equalizer_footer">Shapes the sound inside BitChord, before it reaches the system.</string>
@@ -399,6 +415,8 @@
     <string name="discord_button_variables">{song_name}, {artist_name} and {album_name} are replaced with the current track.</string>
     <string name="discord_buttons_footer">{song_name}, {artist_name} and {album_name} are replaced with the track. The first button opens the song on YouTube Music and the second opens this project.</string>
     <string name="discord_presence_footer">The card updates when the track, position or playback state changes. It clears when playback stops.</string>
+    <string name="discord_show_audio_quality">Show audio quality</string>
+    <string name="discord_show_audio_quality_subtitle">Hi-Res, lossless and Dolby specs on the presence card</string>
     <string name="discord_sign_in_footer">Signing in opens Discord\'s login page. Nothing is typed into BitChord.</string>
     <string name="discord_token">Discord token</string>
     <string name="discord_token_description">Paste your Discord account token. It stays encrypted on this device and is sent only to Discord.</string>
@@ -584,14 +602,12 @@
     <string name="no_playlists_yet">No playlists yet. Use the row above to create one.</string>
     <string name="no_tracks_here">No tracks here</string>
     <string name="not_connected">Not connected</string>
-    <string name="nothing_playing">Nothing playing</string>
     <string name="one_hour">1 hour</string>
     <string name="open_album">Open album</string>
     <string name="open_artist">Open artist</string>
     <string name="pause_after_a_while">Pause playback after a while</string>
     <string name="pause_after_song">Pausing when this song ends</string>
     <string name="pause_countdown">%1$s until playback pauses</string>
-    <string name="pick_something">Choose something and it will appear here</string>
     <string name="play_to_preview">Play something to fill in the preview.</string>
     <string name="playlist_name">Playlist name</string>
     <string name="presence">Presence</string>
@@ -761,6 +777,33 @@
     <string name="use_all_audio_folders_subtitle">Remove the folder limit and scan music across the device</string>
     <string name="album">album</string>
     <string name="artist">artist</string>
+    <string name="webdav">WebDAV</string>
+    <string name="webdav_subtitle">Music on your server</string>
+    <string name="webdav_not_configured">Connect a server under Sources</string>
+    <string name="webdav_empty">No audio files found on the WebDAV server. Check the URL in Settings.</string>
+    <string name="webdav_description">Point BitChord at a WebDAV music folder — your Nextcloud Music directory or any server speaking WebDAV.</string>
+    <string name="webdav_server_url">Server URL</string>
+    <string name="webdav_server_url_hint">https://cloud.example.com/remote.php/dav/files/user/Music</string>
+    <string name="webdav_disconnect">Disconnect</string>
+    <string name="webdav_test_failed">Couldn’t reach it: %1$s</string>
+    <string name="upload_to_webdav">Upload to WebDAV</string>
+    <string name="webdav_conflict_title">“%1$s” is already on the server</string>
+    <string name="webdav_conflict_message">Overwrite it, or keep both copies?</string>
+    <string name="webdav_overwrite">Overwrite</string>
+    <string name="webdav_keep_both">Keep both</string>
+    <string name="webdav_skip">Skip</string>
+    <string name="webdav_apply_to_all">Apply to all</string>
+    <string name="webdav_upload_summary">%1$d uploaded · %2$d skipped · %3$d failed</string>
+    <string name="smb">SMB</string>
+    <string name="smb_subtitle">Music on a file share</string>
+    <string name="smb_not_configured">Connect a share under Sources</string>
+    <string name="smb_empty">No audio files found on the SMB share. Check the server in Sources.</string>
+    <string name="smb_description">Point BitChord at a shared music folder — a NAS or Windows share speaking SMB.</string>
+    <string name="smb_server_hint">nas.local or 192.168.1.10:4445</string>
+    <string name="smb_share_hint">Share name, e.g. Music</string>
+    <string name="smb_folder_hint">Folder inside the share, e.g. media/music (optional)</string>
+    <string name="smb_disconnect">Disconnect</string>
+    <string name="smb_test_failed">Couldn’t reach it: %1$s</string>
     <string name="playlist">playlist</string>
     <string name="playlist_action">Playlist</string>
     <string name="open">Open</string>
@@ -781,6 +824,11 @@
     <string name="analysis_refining">analysed, refining…</string>
     <string name="analysis_in_progress">analysing…</string>
     <string name="waiting">waiting</string>
+    <string name="version_alignment_status">%1$s · %2$s</string>
+    <string name="version_cut_not_fetched">not fetched</string>
+    <string name="version_cut_fetching">fetching</string>
+    <string name="version_cut_measuring">analyzing</string>
+    <string name="version_cut_aligned">aligned</string>
     <string name="automix_enabled_subtitle">Times and blends every transition from the tracks themselves. Turn it off if the phone gets hot or playback stutters.</string>
     <string name="automix_disabled_subtitle">Times and blends transitions automatically, without a slider. Performance may vary on slower devices.</string>
     <string name="no_lyrics_sources_enabled">None. Lyrics will not be fetched.</string>
@@ -1010,7 +1058,7 @@
 
     <string name="blur_unfocused_lyrics_subtitle">Keeps the spotlight on the current line</string>
 
-    <string name="advanced_options">Advanced options</string>
+    <string name="advanced_options">Advanced &amp; experimental options</string>
 
     <string name="lyrics_debug_logs">Lyrics debug logs</string>
 

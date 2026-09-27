@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Downloading
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Radio
@@ -45,6 +46,7 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.ThumbDownOffAlt
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -76,10 +78,12 @@ import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
+import com.music.bitchord.data.webdav.WebDavUploads
 import com.music.bitchord.download.DownloadState
 import com.music.bitchord.download.Downloads
 import com.music.bitchord.playback.SleepTimer
 import com.music.bitchord.ui.components.thumbnailBorder
+import com.music.bitchord.ui.icons.BitChordIcons
 import com.music.bitchord.ui.theme.ArtworkPalette
 import com.music.bitchord.ui.theme.rememberArtworkPalette
 import kotlinx.coroutines.delay
@@ -123,6 +127,13 @@ fun SongActionsSheet(
     onAddToQueue: () -> Unit,
     onStartRadio: () -> Unit,
     onDownload: () -> Unit,
+    /**
+     * Copies this track to the WebDAV server. Null hides the row — the caller
+     * passes one only for a readable device file while a server is
+     * configured. Uploading while another upload of the same track runs just
+     * re-runs it; the conflict dialog keeps that idempotent.
+     */
+    onUploadToWebDav: (() -> Unit)? = null,
     onToggleLike: () -> Unit,
     onToggleDislike: () -> Unit,
     onAddToPlaylist: () -> Unit,
@@ -148,6 +159,15 @@ fun SongActionsSheet(
     onUpgradeQuality: (() -> Unit)? = null,
     /** Keeps the upgrade row visible but untappable while its lookup is running. */
     upgradeQualityInProgress: Boolean = false,
+    /**
+     * Switches the playing track between its video and audio-only cuts. Null
+     * hides the row — offered only from the player, and only once an
+     * alternate cut is known to exist. See
+     * [com.music.bitchord.playback.PlaybackService.smoothSwapCurrentTrackVersion].
+     */
+    onToggleAudioVersion: (() -> Unit)? = null,
+    /** Which cut is playing now, so the row can offer the other one. */
+    isAudioVersion: Boolean = false,
     onShare: (() -> Unit)? = null,
     /**
      * Copies what the app logged while starting this track. Null everywhere
@@ -195,24 +215,39 @@ fun SongActionsSheet(
         // a substituted copy, the other for a track held on YouTube's own —
         // and between them they are the whole of the choice, which is why they
         // sit in the same place under the same divider.
-        (onRollbackToOriginal ?: onUpgradeQuality)?.let {
-            ActionRow(
-                icon = if (onRollbackToOriginal != null) {
-                    Icons.AutoMirrored.Rounded.Undo
-                } else {
-                    Icons.Rounded.HighQuality
-                },
-                label = stringResource(
-                    if (onRollbackToOriginal != null) {
-                        R.string.revert_to_original
+        if (onRollbackToOriginal != null || onUpgradeQuality != null || onToggleAudioVersion != null) {
+            (onRollbackToOriginal ?: onUpgradeQuality)?.let {
+                ActionRow(
+                    icon = if (onRollbackToOriginal != null) {
+                        Icons.AutoMirrored.Rounded.Undo
                     } else {
-                        R.string.upgrade_quality
+                        Icons.Rounded.HighQuality
                     },
-                ),
-                accent = palette.accent,
-                enabled = onRollbackToOriginal != null || !upgradeQualityInProgress,
-                onClick = it,
-            )
+                    label = stringResource(
+                        if (onRollbackToOriginal != null) {
+                            R.string.revert_to_original
+                        } else {
+                            R.string.upgrade_quality
+                        },
+                    ),
+                    accent = palette.accent,
+                    enabled = onRollbackToOriginal != null || !upgradeQualityInProgress,
+                    onClick = it,
+                )
+            }
+            // Which recording, not which quality — a different question from
+            // the row above, so it sits right under it rather than merged
+            // into it, but still ahead of the divider both share.
+            onToggleAudioVersion?.let {
+                ActionRow(
+                    icon = if (isAudioVersion) Icons.Rounded.Videocam else BitChordIcons.MusicNote,
+                    label = stringResource(
+                        if (isAudioVersion) R.string.convert_to_video else R.string.convert_to_audio,
+                    ),
+                    accent = palette.accent,
+                    onClick = it,
+                )
+            }
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 6.dp),
                 thickness = 0.5.dp,
@@ -257,6 +292,7 @@ fun SongActionsSheet(
         }
 
         DownloadRow(song, palette, isOffline, onDownload)
+        WebDavUploadRow(song, palette, isOffline, onUploadToWebDav)
         ActionRow(
             icon = Icons.Rounded.Radio,
             label = stringResource(R.string.start_radio),
@@ -485,6 +521,52 @@ private fun DownloadRow(song: Song, palette: ArtworkPalette, isOffline: Boolean,
                 onClick = onDownload,
             )
         }
+    }
+}
+
+/**
+ * Sends a device file to the WebDAV server. Sits beside the download row
+ * because it is the same idea in the other direction — and like that row it
+ * reads its state where it is drawn rather than threading it through the
+ * sheet's signature.
+ *
+ * Shown only for readable local files. A track already on the server, or a
+ * stream with no bytes on this device, has nothing to send up.
+ */
+@Composable
+private fun WebDavUploadRow(
+    song: Song,
+    palette: ArtworkPalette,
+    isOffline: Boolean,
+    onUpload: (() -> Unit)?,
+) {
+    onUpload ?: return
+    if (!isOffline || !WebDavUploads.isUploadable(song)) return
+    val active by WebDavUploads.active.collectAsStateWithLifecycle()
+    when (val state = active[song.videoId]) {
+        is WebDavUploads.TrackState.Running -> ActionRow(
+            icon = Icons.Rounded.FileUpload,
+            label = stringResource(R.string.upload_to_webdav),
+            value = "${(state.fraction * 100).toInt()}%",
+            tint = palette.accent,
+            accent = palette.accent,
+            // In flight already; there is no cancel, so the row only reports.
+            onClick = {},
+        )
+        is WebDavUploads.TrackState.Failed -> ActionRow(
+            icon = Icons.Rounded.FileUpload,
+            label = state.reason,
+            value = stringResource(R.string.try_again),
+            tint = MaterialTheme.colorScheme.error,
+            accent = MaterialTheme.colorScheme.error,
+            onClick = onUpload,
+        )
+        else -> ActionRow(
+            icon = Icons.Rounded.FileUpload,
+            label = stringResource(R.string.upload_to_webdav),
+            accent = palette.accent,
+            onClick = onUpload,
+        )
     }
 }
 

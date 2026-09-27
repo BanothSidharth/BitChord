@@ -206,7 +206,7 @@ object AppSettings {
 
     private lateinit var prefs: SharedPreferences
 
-    /** Only for the Discord token — everything else on here is plain prefs. */
+    /** Only for the Discord, WebDAV and SMB secrets — everything else on here is plain prefs. */
     private lateinit var authStore: AuthStore
 
     /**
@@ -451,6 +451,9 @@ object AppSettings {
      */
     val preferMusicOnly = MutableStateFlow(false)
 
+    /** Analyzes audio waveform/envelope to align matching playback moment between versions. */
+    val smartVersionAlignment = MutableStateFlow(true)
+
     /** Drops haze blur (status bar, mini player, bottom fade, lyrics focus) for a solid-fill look. */
     val reduceDynamicBlur = MutableStateFlow(false)
 
@@ -629,6 +632,36 @@ object AppSettings {
     /** Empty means every MediaStore folder; otherwise this is a persisted SAF tree URI. */
     val localMusicFolderUri = MutableStateFlow("")
 
+    // ── WebDAV ────────────────────────────────────────────────────────────
+
+    /**
+     * Remote music library over WebDAV (e.g. Nextcloud's Music folder).
+     *
+     * The URL and username live in plain prefs like every other setting; the
+     * password is mirrored out of [AuthStore] so it stays encrypted at rest
+     * and out of backup exports — see [exportPrefs]. Empty URL means
+     * unconfigured, and the library simply reads as empty.
+     */
+    val webdavUrl = MutableStateFlow("")
+    val webdavUsername = MutableStateFlow("")
+    val webdavPassword = MutableStateFlow("")
+
+    // ── SMB ───────────────────────────────────────────────────────────────
+
+    /**
+     * Remote music library on an SMB file share (a NAS, a Windows box).
+     *
+     * Stored like the WebDAV settings: host, share, base folder and username
+     * in plain prefs, the password mirrored out of [AuthStore] so it stays
+     * encrypted at rest and out of backup exports. Empty host or share means
+     * unconfigured, and the library simply reads as empty.
+     */
+    val smbHost = MutableStateFlow("")
+    val smbShare = MutableStateFlow("")
+    val smbBasePath = MutableStateFlow("")
+    val smbUsername = MutableStateFlow("")
+    val smbPassword = MutableStateFlow("")
+
     /**
      * Browse ids of the playlists pinned to the top of the Library tab, in the
      * order they were pinned.
@@ -691,6 +724,9 @@ object AppSettings {
     /** Put the track title on the bold profile line, in place of the artist. */
     val discordUseDetails = MutableStateFlow(false)
 
+    /** Show measured Hi-Res, Lossless, or Dolby specs on the presence card. */
+    val discordShowAudioQuality = MutableStateFlow(true)
+
     /** Reveals the presence-shape controls: status, activity type/name, buttons. */
     val discordAdvancedMode = MutableStateFlow(false)
 
@@ -723,6 +759,16 @@ object AppSettings {
      * something a plain crossfade could not.
      */
     val smartMixInProgress = MutableStateFlow(false)
+
+    /**
+     * True while a version switch is fetching and analysing the other cut
+     * before playback actually moves. Drains into the loading bar drawn along
+     * the scrubber itself — `ThinSlider.loading` — so the wait reads as work
+     * in progress rather than as a player frozen on a version that is about to
+     * change, and lights the toggle button's spinner through the half of the
+     * switch that has nothing else showing.
+     */
+    val versionAlignmentInProgress = MutableStateFlow(false)
 
     /**
      * How much of the *upcoming* transition has been analysed, for stats for
@@ -760,9 +806,14 @@ object AppSettings {
     val downloadsAllowedNow: Boolean
         get() = !wifiOnlyDownloads.value || meteredConnection.value != true
 
-    fun init(context: Context) {
+    /**
+     * [authStore] is the application's own, passed in rather than opened again:
+     * each open of the encrypted store is a keystore round trip, and a second
+     * one here was a measurable slice of cold start.
+     */
+    fun init(context: Context, authStore: AuthStore) {
         prefs = context.getSharedPreferences("bitchord_settings", Context.MODE_PRIVATE)
-        authStore = AuthStore(context)
+        this.authStore = authStore
         readAll()
         watchConnection(context)
     }
@@ -844,6 +895,7 @@ object AppSettings {
         swipeToPlayNext.value = prefs.getBoolean(KEY_SWIPE_TO_PLAY_NEXT, false)
         dontRepeatSuggestions.value = prefs.getBoolean(KEY_DONT_REPEAT_SUGGESTIONS, false)
         preferMusicOnly.value = prefs.getBoolean(KEY_PREFER_MUSIC_ONLY, false)
+        smartVersionAlignment.value = prefs.getBoolean(KEY_SMART_VERSION_ALIGNMENT, true)
         reduceDynamicBlur.value = prefs.getBoolean(KEY_REDUCE_BLUR, false)
         liquidGlass.value = prefs.getBoolean(KEY_LIQUID_GLASS, false)
         lyricsBlur.value = prefs.getBoolean(KEY_LYRICS_BLUR, true)
@@ -903,6 +955,26 @@ object AppSettings {
             ?: LibrarySort.DEFAULT
         detailSongSorts.value = readDetailSongSorts()
         localMusicFolderUri.value = prefs.getString(KEY_LOCAL_MUSIC_FOLDER_URI, "").orEmpty()
+        webdavUrl.value = prefs.getString(KEY_WEBDAV_URL, "").orEmpty()
+        webdavUsername.value = prefs.getString(KEY_WEBDAV_USERNAME, "").orEmpty()
+        webdavPassword.value = authStore.webdavPassword.orEmpty()
+        smbHost.value = prefs.getString(KEY_SMB_HOST, "").orEmpty()
+        smbShare.value = prefs.getString(KEY_SMB_SHARE, "").orEmpty()
+        smbBasePath.value = prefs.getString(KEY_SMB_BASE_PATH, "").orEmpty()
+        smbUsername.value = prefs.getString(KEY_SMB_USERNAME, "").orEmpty()
+        smbPassword.value = authStore.smbPassword.orEmpty()
+        com.music.bitchord.data.smb.SmbAuth.update(
+            smbHost.value,
+            smbShare.value,
+            smbBasePath.value,
+            smbUsername.value,
+            smbPassword.value,
+        )
+        com.music.bitchord.data.webdav.WebDavAuth.update(
+            webdavUrl.value,
+            webdavUsername.value,
+            webdavPassword.value,
+        )
         pinnedPlaylists.value = readPinnedPlaylists()
         discordToken.value = authStore.discordToken.orEmpty()
         discordUsername.value = prefs.getString(KEY_DISCORD_USERNAME, "").orEmpty()
@@ -910,6 +982,7 @@ object AppSettings {
         discordAvatar.value = prefs.getString(KEY_DISCORD_AVATAR, "").orEmpty()
         discordRpcEnabled.value = prefs.getBoolean(KEY_DISCORD_RPC_ENABLED, true)
         discordUseDetails.value = prefs.getBoolean(KEY_DISCORD_USE_DETAILS, false)
+        discordShowAudioQuality.value = prefs.getBoolean(KEY_DISCORD_SHOW_AUDIO_QUALITY, true)
         discordAdvancedMode.value = prefs.getBoolean(KEY_DISCORD_ADVANCED_MODE, false)
         discordStatus.value = prefs.getString(KEY_DISCORD_STATUS, "online").orEmpty()
         discordActivityType.value = prefs.getString(KEY_DISCORD_ACTIVITY_TYPE, "listening").orEmpty()
@@ -1206,6 +1279,11 @@ object AppSettings {
     fun setPreferMusicOnly(value: Boolean) {
         preferMusicOnly.value = value
         prefs.edit().putBoolean(KEY_PREFER_MUSIC_ONLY, value).apply()
+    }
+
+    fun setSmartVersionAlignment(value: Boolean) {
+        smartVersionAlignment.value = value
+        prefs.edit().putBoolean(KEY_SMART_VERSION_ALIGNMENT, value).apply()
     }
 
     fun setReduceDynamicBlur(value: Boolean) {
@@ -1549,6 +1627,11 @@ object AppSettings {
         prefs.edit().putBoolean(KEY_DISCORD_USE_DETAILS, value).apply()
     }
 
+    fun setDiscordShowAudioQuality(value: Boolean) {
+        discordShowAudioQuality.value = value
+        prefs.edit().putBoolean(KEY_DISCORD_SHOW_AUDIO_QUALITY, value).apply()
+    }
+
     fun setDiscordAdvancedMode(value: Boolean) {
         discordAdvancedMode.value = value
         prefs.edit().putBoolean(KEY_DISCORD_ADVANCED_MODE, value).apply()
@@ -1651,6 +1734,96 @@ object AppSettings {
     fun setLocalMusicFolderUri(value: String) {
         localMusicFolderUri.value = value
         prefs.edit().putString(KEY_LOCAL_MUSIC_FOLDER_URI, value).apply()
+    }
+
+    fun setWebDavUrl(value: String) {
+        val normalized = value.trim().trimEnd('/')
+        webdavUrl.value = normalized
+        prefs.edit().putString(KEY_WEBDAV_URL, normalized).apply()
+        publishWebDavAuth()
+    }
+
+    fun setWebDavUsername(value: String) {
+        val normalized = value.trim()
+        webdavUsername.value = normalized
+        prefs.edit().putString(KEY_WEBDAV_USERNAME, normalized).apply()
+        publishWebDavAuth()
+    }
+
+    /** Writes through to the encrypted store; pass "" to forget. */
+    fun setWebDavPassword(value: String) {
+        webdavPassword.value = value
+        authStore.webdavPassword = value.ifEmpty { null }
+        publishWebDavAuth()
+    }
+
+    fun clearWebDav() {
+        setWebDavUrl("")
+        setWebDavUsername("")
+        setWebDavPassword("")
+    }
+
+    fun setSmbHost(value: String) {
+        val normalized = value.trim()
+        smbHost.value = normalized
+        prefs.edit().putString(KEY_SMB_HOST, normalized).apply()
+        publishSmbAuth()
+    }
+
+    fun setSmbShare(value: String) {
+        val normalized = value.trim().trim('/')
+        smbShare.value = normalized
+        prefs.edit().putString(KEY_SMB_SHARE, normalized).apply()
+        publishSmbAuth()
+    }
+
+    fun setSmbBasePath(value: String) {
+        val normalized = value.trim().trim('/')
+        smbBasePath.value = normalized
+        prefs.edit().putString(KEY_SMB_BASE_PATH, normalized).apply()
+        publishSmbAuth()
+    }
+
+    fun setSmbUsername(value: String) {
+        val normalized = value.trim()
+        smbUsername.value = normalized
+        prefs.edit().putString(KEY_SMB_USERNAME, normalized).apply()
+        publishSmbAuth()
+    }
+
+    /** Writes through to the encrypted store; pass "" to forget. */
+    fun setSmbPassword(value: String) {
+        smbPassword.value = value
+        authStore.smbPassword = value.ifEmpty { null }
+        publishSmbAuth()
+    }
+
+    fun clearSmb() {
+        setSmbHost("")
+        setSmbShare("")
+        setSmbBasePath("")
+        setSmbUsername("")
+        setSmbPassword("")
+    }
+
+    private fun publishSmbAuth() {
+        if (!this::prefs.isInitialized || !this::authStore.isInitialized) return
+        com.music.bitchord.data.smb.SmbAuth.update(
+            smbHost.value,
+            smbShare.value,
+            smbBasePath.value,
+            smbUsername.value,
+            smbPassword.value,
+        )
+    }
+
+    private fun publishWebDavAuth() {
+        if (!this::prefs.isInitialized || !this::authStore.isInitialized) return
+        com.music.bitchord.data.webdav.WebDavAuth.update(
+            webdavUrl.value,
+            webdavUsername.value,
+            webdavPassword.value,
+        )
     }
 
     private fun readLocalMusicSort(key: String): LocalMusicSort =
@@ -1867,6 +2040,7 @@ object AppSettings {
     private const val KEY_SWIPE_TO_PLAY_NEXT = "swipe_to_play_next"
     private const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
     private const val KEY_PREFER_MUSIC_ONLY = "prefer_music_only"
+    private const val KEY_SMART_VERSION_ALIGNMENT = "smart_version_alignment"
     private const val KEY_REDUCE_BLUR = "reduce_dynamic_blur"
     private const val KEY_LIQUID_GLASS = "liquid_glass"
     private const val KEY_LYRICS_BLUR = "lyrics_blur"
@@ -1896,6 +2070,12 @@ object AppSettings {
     private const val KEY_DOWNLOADED_MUSIC_VIEW_TYPE = "downloaded_music_view_type"
     private const val KEY_HOME_RECENTS_VIEW_TYPE = "home_recents_view_type"
     private const val KEY_LOCAL_MUSIC_FOLDER_URI = "local_music_folder_uri"
+    private const val KEY_WEBDAV_URL = "webdav_url"
+    private const val KEY_WEBDAV_USERNAME = "webdav_username"
+    private const val KEY_SMB_HOST = "smb_host"
+    private const val KEY_SMB_SHARE = "smb_share"
+    private const val KEY_SMB_BASE_PATH = "smb_base_path"
+    private const val KEY_SMB_USERNAME = "smb_username"
     private const val KEY_PINNED_PLAYLISTS = "pinned_playlists"
 
     private const val KEY_LASTFM_ENABLED = "lastfm_enabled"
@@ -1920,6 +2100,7 @@ object AppSettings {
     private const val KEY_DISCORD_AVATAR = "discord_avatar"
     private const val KEY_DISCORD_RPC_ENABLED = "discord_rpc_enabled"
     private const val KEY_DISCORD_USE_DETAILS = "discord_use_details"
+    private const val KEY_DISCORD_SHOW_AUDIO_QUALITY = "discord_show_audio_quality"
     private const val KEY_DISCORD_ADVANCED_MODE = "discord_advanced_mode"
     private const val KEY_DISCORD_STATUS = "discord_status"
     private const val KEY_DISCORD_ACTIVITY_TYPE = "discord_activity_type"
