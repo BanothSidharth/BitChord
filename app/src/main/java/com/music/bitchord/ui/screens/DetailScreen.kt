@@ -120,6 +120,7 @@ import com.music.bitchord.ui.components.ROW_DIVIDER_INSET
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.SongRow
 import com.music.bitchord.ui.components.libraryGrid
+import com.music.bitchord.ui.components.lightweightLiquidGlass
 import com.music.bitchord.ui.components.thumbnailBorder
 import com.music.bitchord.ui.components.detailSkeleton
 import com.music.bitchord.ui.components.topBarContentPadding
@@ -286,13 +287,10 @@ fun DetailScreen(
     // an album's track numbers stay the album's rather than becoming positions
     // in the filtered list.
     val matches = remember(songs, query) { songs.matching(query) }
-    // What a tap plays: for playlists the full list (preserving context), so
-    // searching and tapping still stays inside the playlist. For albums / other
-    // browse types the filtered set is used — playing an entire album from a
-    // single search hit would queue tracks the user never asked for.
-    val queue = remember(songs, matches, page.type) {
-        if (page.type == BrowseType.PLAYLIST) songs else matches.map { it.value }
-    }
+    // What a tap plays: the filtered set of tracks currently standing in the
+    // list. When no filter is active, matches contains the full running order
+    // and plays the complete release/playlist from the tapped position.
+    val queue = remember(matches) { matches.map { it.value } }
     val suggested = remember(page.suggestedSongs, query) {
         page.suggestedSongs.matching(query).map { it.value }
     }
@@ -307,12 +305,13 @@ fun DetailScreen(
     // Albums only: a playlist's artwork is a collage and an artist page's is a
     // photograph, and neither is something a label publishes a canvas for.
     val canvasEnabled by AppSettings.animatedCanvas.collectAsStateWithLifecycle()
+    val prioritizeSpotifyCanvas by AppSettings.prioritizeSpotifyCanvas.collectAsStateWithLifecycle()
     // The credit line the header shows is the artist as far as the catalogue
     // services are concerned. A browse card's subtitle sometimes omits it, in
     // which case the tracks themselves know who it is.
     val credit = page.headerLines(songs.size).first.ifBlank { songs.firstOrNull()?.artist.orEmpty() }
     var canvas by remember(page.browseId) { mutableStateOf<CanvasArtwork?>(null) }
-    LaunchedEffect(page.browseId, page.title, credit, canvasEnabled) {
+    LaunchedEffect(page.browseId, page.title, credit, canvasEnabled, prioritizeSpotifyCanvas) {
         if (!canvasEnabled || page.type != BrowseType.ALBUM) {
             canvas = null
             return@LaunchedEffect
@@ -350,16 +349,9 @@ fun DetailScreen(
                 // width is the page's, so the ratio decides it and both can work it out
                 // alone.
                 //
-                // Measured rather than read off the window, because the two are not the
-                // same number everywhere: on a tablet the page is the column left over
-                // once the player has its pane, and a height derived from the whole
-                // window there is a sleeve half again as tall as it is wide.
-                //
-                // That assumption — a tablet's page is always the narrow docked
-                // column — no longer holds: the player runs full-screen at every
-                // window size now (see [dockedPlayerAvailable]'s call site), so this
-                // page's own width in landscape is the *whole* window, not a leftover
-                // column beside a pane. Straight off that width, the ratio hands back
+                // Measured rather than read off the window. The player runs
+                // full-screen at every window size, so this page's own width in
+                // landscape is the *whole* window. Straight off that width, the ratio hands back
                 // a hero taller than the window itself — the artwork and track list
                 // end up scrolled out of sight beneath what reads as a blank page.
                 // Capping against the window's own height is what keeps the ratio's
@@ -520,7 +512,10 @@ fun DetailScreen(
                             MessageState(stringResource(R.string.nothing_matches, query))
                         }
                     }
-                    itemsIndexed(matches) { position, entry ->
+                    itemsIndexed(
+                        items = matches,
+                        key = { _, entry -> "${entry.index}_${entry.value.videoId}" },
+                    ) { position, entry ->
                         val song = entry.value
                         val isCurrent = song.isSameTrackAs(currentSong)
                         SongRow(
@@ -530,8 +525,7 @@ fun DetailScreen(
                                 song.copy(thumbnailUrl = song.thumbnailUrl ?: page.thumbnailUrl)
                             },
                             onClick = {
-                                val startIdx = if (page.type == BrowseType.PLAYLIST) entry.index else position
-                                onSongClick(queue, startIdx)
+                                onSongClick(queue, position)
                             },
                             onLongPress = { onSongLongPress(song) },
                             onSwipeToQueue = { onSongSwipe(song) },
@@ -612,6 +606,7 @@ fun DetailScreen(
                 }
             }
         }
+
     }
 } else {
     ArtistShelfGridPage(
@@ -768,13 +763,9 @@ private fun ReleaseHeader(
                         size = circleSize,
                     )
                     PlayPill(
-                        palette = palette,
                         onClick = onPlay,
-                        horizontalPadding = when (circles) {
-                            1, 2 -> 32.dp
-                            3 -> 24.dp
-                            else -> 14.dp
-                        },
+                        iconOnly = true,
+                        size = circleSize,
                     )
                     if (autoDownload) {
                         CircleIconButton(
@@ -942,7 +933,7 @@ private fun List<Song>.sortedForDetail(sort: SongSort): List<Song> = when (sort)
  * full list — see the track numbers on an album, which are the release's own
  * and not positions in whatever the filter left.
  */
-private fun List<Song>.matching(query: String): List<IndexedValue<Song>> {
+internal fun List<Song>.matching(query: String): List<IndexedValue<Song>> {
     val all = withIndex().toList()
     if (query.isBlank()) return all
     return all.filter { (_, song) ->
@@ -1036,20 +1027,6 @@ private fun PageBackground(
                 )
             }
 
-            // Shade under the glass bar. Drawn in the page's own tint rather
-            // than in black, so the back arrow — which is themed, not always
-            // white — keeps its contrast in light mode as well as dark.
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.28f)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(palette.background.copy(alpha = 0.55f), Color.Transparent),
-                        ),
-                    ),
-            )
-
             // Settles the foot of the picture onto the colour the page is made
             // of, so the two sides of the join are already close before the
             // glass goes over them — a blur averages what it is given and
@@ -1069,6 +1046,7 @@ private fun PageBackground(
                     ),
             )
         }
+
     }
 }
 
@@ -1216,7 +1194,6 @@ private fun ActionRow(
         }
 
         PlayPill(
-            palette = palette,
             onClick = onPlay,
         )
 
@@ -1233,45 +1210,48 @@ private fun ActionRow(
 }
 
 /**
- * The prominent, pill-shaped Play button that anchors the action row.
- * White-ish solid fill with the accent colour, like Apple Music's Play button.
+ * The prominent Play control that anchors the action row. Releases request its
+ * icon-only circle; the artist retains the labeled pill. Both use a fixed white
+ * surface with black content so the primary action survives every palette.
  */
 @Composable
 private fun PlayPill(
-    palette: ArtworkPalette,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     horizontalPadding: Dp = 32.dp,
+    iconOnly: Boolean = false,
+    size: Dp = 50.dp,
 ) {
     // Resume rather than a flat tap: this button starts a queue, and the rising
     // pair says so.
     val haptics = rememberHaptics()
     Row(
         modifier = modifier
-            .height(50.dp)
+            .then(if (iconOnly) Modifier.size(size) else Modifier.height(size))
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
-            .border(0.5.dp, Color.White.copy(alpha = 0.10f), CircleShape)
+            .background(Color.White)
             .clickable {
                 haptics.play(Haptic.Resume)
                 onClick()
             }
-            .padding(horizontal = horizontalPadding),
+            .then(if (iconOnly) Modifier else Modifier.padding(horizontal = horizontalPadding)),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = BitChordIcons.Play,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(18.dp),
+            contentDescription = if (iconOnly) stringResource(R.string.play) else null,
+            tint = Color.Black,
+            modifier = Modifier.size(if (iconOnly) size * 0.44f else 18.dp),
         )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = stringResource(R.string.play),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        if (!iconOnly) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.play),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.Black,
+            )
+        }
     }
 }
 
@@ -1292,9 +1272,10 @@ private fun CircleIconButton(
     Box(
         modifier = Modifier
             .size(size)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
-            .border(0.5.dp, Color.White.copy(alpha = 0.10f), CircleShape)
+            .lightweightLiquidGlass(
+                shape = CircleShape,
+                fallbackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+            )
             .clickable {
                 haptics.play(haptic)
                 onClick()
@@ -1361,9 +1342,10 @@ private fun StatChip(icon: ImageVector, text: String, palette: ArtworkPalette) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
-            .border(0.5.dp, Color.White.copy(alpha = 0.10f), CircleShape)
+            .lightweightLiquidGlass(
+                shape = CircleShape,
+                fallbackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+            )
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         Icon(

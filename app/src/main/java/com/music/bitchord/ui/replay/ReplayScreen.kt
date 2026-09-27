@@ -31,7 +31,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +54,7 @@ import com.music.bitchord.R
 import com.music.bitchord.data.model.ROW_ART_PX
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
+import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.stats.ArtistFacts
 import com.music.bitchord.data.stats.ReplayPeriod
 import com.music.bitchord.data.stats.ReplaySummary
@@ -67,20 +70,14 @@ private fun isDarkMode(): Boolean =
     MaterialTheme.colorScheme.background.luminance() < 0.5f
 
 /**
- * The Replay page: four cards, four charts and a way to share the lot.
+ * The Replay page: four headline cards, four charts and a way to play or share
+ * the lot.
  *
  * ## Two ways in to the same numbers
  *
- * The cards along the top are the *story* — one fact each, tappable, and what
- * anyone who opened this page out of curiosity actually wants. Everything under
- * them is the *table* — the same four categories ranked out to ten, for the
- * person who wants to know what came fourth. Wrapped-style apps usually ship
- * only the first and leave the second to a support article; the ranked lists
- * cost a scroll and answer every follow-up question the cards provoke.
- *
- * The Library page carries the *first* of those cards — the minutes — on its
- * own, as the way in. One card there is an invitation; four is a second copy of
- * this page's opening on a page that is about something else.
+ * The headline cards also live on the Library page, where each one opens this
+ * page at its matching chart. They remain here as Replay's own visual summary;
+ * the ranked lists below answer the follow-up questions those cards provoke.
  *
  * ## Why the page is washed in the top song's colours
  *
@@ -93,10 +90,7 @@ private fun isDarkMode(): Boolean =
 @Composable
 fun ReplayScreen(
     state: ReplayState,
-    /**
-     * The name on the cards — the signed-in account's, or blank for a guest,
-     * where [DEFAULT_HOLDER] stands in.
-     */
+    /** The signed-in account name embossed on the Replay cards. */
     holder: String,
     onPeriodChange: (ReplayPeriod) -> Unit,
     onOpenStory: (ReplayStoryPage) -> Unit,
@@ -113,6 +107,7 @@ fun ReplayScreen(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
+    landingPage: ReplayStoryPage = ReplayStoryPage.INTRO,
 ) {
     val context = LocalContext.current
     val summary = state.summary
@@ -122,6 +117,23 @@ fun ReplayScreen(
     val topArtists = stringResource(R.string.top_artists)
     val topAlbums = stringResource(R.string.top_albums)
     val topGenres = stringResource(R.string.top_genres)
+    // How far down the songs chart to go — see [AppSettings.topSongsLimit].
+    // The other three charts stay at the fixed [CHART_LENGTH]; this is the one
+    // a user might reasonably want to see out to a hundred or more.
+    val topSongsLimit by AppSettings.topSongsLimit.collectAsStateWithLifecycle()
+
+    // Library cards open this same page, but category cards should land on the
+    // corresponding chart rather than making the user find it again. Wait for
+    // a loaded summary because the loading/empty layouts do not contain these
+    // keyed sections yet.
+    LaunchedEffect(landingPage, state.period, summary == null) {
+        val target = when {
+            landingPage == ReplayStoryPage.INTRO || landingPage == ReplayStoryPage.MINUTES -> 0
+            summary == null || summary.isEmpty -> 0
+            else -> replayChartIndex(summary, landingPage)
+        }
+        listState.scrollToItem(target)
+    }
 
     Box(modifier.fillMaxSize()) {
         MeshGradientBackground(palette = palette, trackKey = leadArtwork, animated = false)
@@ -170,7 +182,7 @@ fun ReplayScreen(
                             cards = summary.cards(context),
                             holder = holder,
                             memberSince = state.memberSince,
-                            onOpenStory = onOpenStory,
+                            onCardClick = onOpenStory,
                         )
                     }
                     item("open") {
@@ -182,7 +194,7 @@ fun ReplayScreen(
                     chart(
                         key = "songs",
                         title = topSongs,
-                        rows = summary.songRows(CHART_LENGTH),
+                        rows = summary.songRows(topSongsLimit),
                         dark = dark,
                         onClick = { index ->
                             summary.songs.getOrNull(index)?.let { onPlaySong(it.song) }
@@ -239,6 +251,7 @@ fun ReplayScreen(
                 }
             }
         }
+
     }
 }
 
@@ -318,16 +331,17 @@ private fun PeriodPicker(selected: ReplayPeriod, onSelect: (ReplayPeriod) -> Uni
  * summarises, because the two have to keep saying the same thing.
  */
 @Composable
-private fun ReplayCardRow(
+internal fun ReplayCardRow(
     cards: List<ReplayHeroCard>,
     holder: String,
     memberSince: String?,
-    onOpenStory: (ReplayStoryPage) -> Unit,
+    onCardClick: (ReplayStoryPage) -> Unit,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(horizontal = PAGE_GUTTER + 10.dp),
 ) {
     LazyRow(
         modifier = modifier,
-        contentPadding = PaddingValues(horizontal = PAGE_GUTTER + 10.dp),
+        contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(cards, key = { it.label }) { card ->
@@ -338,10 +352,27 @@ private fun ReplayCardRow(
                 artworkUrl = card.artworkUrl,
                 holder = holder,
                 memberSince = memberSince,
-                onClick = { onOpenStory(card.page) },
+                onClick = { onCardClick(card.page) },
                 modifier = Modifier.width(300.dp),
             )
         }
+    }
+}
+
+/**
+ * Lazy-list index of a chart title after the heading, card row and Replay action.
+ * Each preceding chart contributes its title, visible rows and trailing gap.
+ */
+private fun replayChartIndex(summary: ReplaySummary, page: ReplayStoryPage): Int {
+    val songs = summary.songRows(CHART_LENGTH)
+    val artists = summary.artistRows(CHART_LENGTH)
+    fun span(rows: List<ReplayRow>): Int = if (rows.isEmpty()) 0 else rows.size + 2
+
+    return when (page) {
+        ReplayStoryPage.SONGS -> 3
+        ReplayStoryPage.ARTISTS -> 3 + span(songs)
+        ReplayStoryPage.ALBUMS -> 3 + span(songs) + span(artists)
+        else -> 0
     }
 }
 
@@ -589,10 +620,15 @@ private fun EmptyReplay(period: ReplayPeriod, dark: Boolean) {
 }
 
 /**
- * How far down each chart the page goes.
+ * How far down the artist, album and genre charts the page goes.
  *
  * Five. Ten was the first guess and it made the page a scroll of forty rows
  * whose second half nobody has an opinion about — a top five is a result, and a
  * top ten is a list.
+ *
+ * The songs chart is the exception — see [AppSettings.topSongsLimit] — because
+ * it is the one list long enough, and specific enough, that "where did my
+ * two-hundredth most played song land" is a real question rather than a
+ * scroll nobody asked for.
  */
 private const val CHART_LENGTH = 5
