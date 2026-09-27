@@ -659,20 +659,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (likeStatusOf(song.videoId) == LikeStatus.LIKE) LikeStatus.INDIFFERENT else LikeStatus.LIKE,
     )
 
-    /** As [toggleLike], for the thumb-down. */
-    fun toggleDislike(song: Song) = setLike(
-        song,
-        if (likeStatusOf(song.videoId) == LikeStatus.DISLIKE) {
-            LikeStatus.INDIFFERENT
-        } else {
-            LikeStatus.DISLIKE
-        },
-    )
-    fun toggleDislike(videoId: String): LikeStatus? {
+    /** As [toggleLike], for the thumb-down; returns the prior status for skip behavior. */
+    fun toggleDislike(song: Song): LikeStatus? {
         if (!requireSignIn()) return null
-        val previous = likeStatusOf(videoId)
+        val previous = likeStatusOf(song.videoId)
         setLike(
-            videoId,
+            song,
             if (previous == LikeStatus.DISLIKE) {
                 LikeStatus.INDIFFERENT
             } else {

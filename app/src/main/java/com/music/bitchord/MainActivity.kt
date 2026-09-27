@@ -3549,10 +3549,8 @@ private fun BitChordApp(
                     // The sheet stays up for a rating: it shows the new state
                     // in place, and people often thumb a song and then queue it.
                     onToggleLike = { viewModel.toggleLike(song) },
-                    onToggleDislike = { viewModel.toggleDislike(song) },
-                    onToggleLike = { viewModel.toggleLike(song.videoId) },
                     onToggleDislike = {
-                        val previousStatus = viewModel.toggleDislike(song.videoId)
+                        val previousStatus = viewModel.toggleDislike(song)
                         if (
                             previousStatus != null &&
                             shouldSkipAfterDislike(
